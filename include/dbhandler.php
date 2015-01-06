@@ -1,5 +1,5 @@
 <?php
- 
+
 /**
  * Class to handle all db operations
  * This class will have CRUD methods for database tables
@@ -7,18 +7,18 @@
  * @author Ravi Tamada
  */
 class DbHandler {
- 
+
     private $conn;
- 
+
     function __construct() {
         require_once dirname(__FILE__) . '/dbconnect.php';
         // opening db connection
         $db = new DbConnect();
         $this->conn = $db->connect();
     }
- 
+
     /* ------------- `sp_users` table method ------------------ */
- 
+
     /**
      * Creating new user
      * @param String $username Display name of user
@@ -26,37 +26,32 @@ class DbHandler {
      * @param String $phoneNumber Phone number of user if applicable
      */
     public function createUser($username, $androidID, $phoneNumber) {
-        require_once 'passhash.php';
         $response = array();
-        
+
         //Is the username taken?
         if (!$this->UserExists($username)) {
-            
+
             //Generate an API key for server-client interactions.
-            //$apiKey = $this->generateApiKey($username,$androidID);
-            $apiKey = $androidID;
-            
+            $apiKey = $this->generateApiKey($username, $androidID);
+
             //Insert upon success.
-            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_apikey, user_phone) VALUES(?,?,?)");
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_apikey, user_phone, user_likessent, user_likesreceived)VALUES(?,?,?,0,0)");
             $stmt->bind_param("sss", $username, $apiKey, $phoneNumber);
-            
+
             $result = $stmt->execute();
             $stmt->close();
-            
-            if ($result){
+
+            if ($result) {
                 return USER_CREATED_SUCCESSFULLY;
             } else {
                 return USER_CREATE_FAILED;
             }
         } else {
-            /**
-             * Try to log in the user with the username + ANDROID_ID tag.
-             * On fail, ask user to choose another username.
-             */
+            return USER_ALREADY_EXISTED;
         }
         return $response;
     }
- 
+
     /**
      * Checking user login
      * @param String $email User login email id
@@ -66,38 +61,38 @@ class DbHandler {
     public function checkLogin($email, $password) {
         // fetching user by email
         $stmt = $this->conn->prepare("SELECT password_hash FROM users WHERE email = ?");
- 
+
         $stmt->bind_param("s", $email);
- 
+
         $stmt->execute();
- 
+
         $stmt->bind_result($password_hash);
- 
+
         $stmt->store_result();
- 
+
         if ($stmt->num_rows > 0) {
             // Found user with the email
             // Now verify the password
- 
+
             $stmt->fetch();
- 
+
             $stmt->close();
- 
-            if (PassHash::check_password($password_hash, $password)) {
-                // User password is correct
-                return TRUE;
-            } else {
-                // user password is incorrect
-                return FALSE;
-            }
+
+            ///if (PassHash::check_password($password_hash, $password)) {
+            // User password is correct
+            // return TRUE;
+            //} else {
+            // user password is incorrect
+            //   return FALSE;
+            // }
         } else {
             $stmt->close();
- 
+
             // user not existed with the email
             return FALSE;
         }
     }
- 
+
     /**
      * Check for unique username
      * @param String $username Name to check for in database
@@ -112,7 +107,7 @@ class DbHandler {
         $stmt->close();
         return $num_rows > 0;
     }
- 
+
     /**
      * Fetching user by email
      * @param String $email User email id
@@ -128,7 +123,7 @@ class DbHandler {
             return NULL;
         }
     }
- 
+
     /**
      * Fetching user api key
      * @param String $user_id user id primary key in user table
@@ -144,7 +139,7 @@ class DbHandler {
             return NULL;
         }
     }
- 
+
     /**
      * Fetching user id by api key
      * @param String $api_key user api key
@@ -160,7 +155,7 @@ class DbHandler {
             return NULL;
         }
     }
- 
+
     /**
      * Validating user api key
      * If the api key is there in db, it is a valid key
@@ -176,29 +171,29 @@ class DbHandler {
         $stmt->close();
         return $num_rows > 0;
     }
- 
+
     /**
      * Generating unique key for server-client interactions
      * @param String $username Usernames are guaranteed to be unique
      * @param String $androidID ANDROID_ID is usually unique, used for obfuscation
      */
-    private function generateApiKey() {
-        
+    private function generateApiKey($username, $androidID) {
+        return password_hash($username . $androidID, PASSWORD_DEFAULT);
     }
- 
+
     /* ------------- `tasks` table method ------------------ */
- 
+
     /**
      * Creating new task
      * @param String $user_id user id to whom task belongs to
      * @param String $task task text
      */
-    public function createTask($user_id, $task) {        
+    public function createTask($user_id, $task) {
         $stmt = $this->conn->prepare("INSERT INTO tasks(task) VALUES(?)");
         $stmt->bind_param("s", $task);
         $result = $stmt->execute();
         $stmt->close();
- 
+
         if ($result) {
             // task row created
             // now assign the task to user
@@ -216,7 +211,7 @@ class DbHandler {
             return NULL;
         }
     }
- 
+
     /**
      * Fetching single task
      * @param String $task_id id of the task
@@ -232,7 +227,7 @@ class DbHandler {
             return NULL;
         }
     }
- 
+
     /**
      * Fetching all user tasks
      * @param String $user_id id of the user
@@ -245,7 +240,7 @@ class DbHandler {
         $stmt->close();
         return $tasks;
     }
- 
+
     /**
      * Updating task
      * @param String $task_id id of the task
@@ -260,7 +255,7 @@ class DbHandler {
         $stmt->close();
         return $num_affected_rows > 0;
     }
- 
+
     /**
      * Deleting a task
      * @param String $task_id id of the task to delete
@@ -273,9 +268,9 @@ class DbHandler {
         $stmt->close();
         return $num_affected_rows > 0;
     }
- 
+
     /* ------------- `user_tasks` table method ------------------ */
- 
+
     /**
      * Function to assign a task to user
      * @param String $user_id id of the user
@@ -288,7 +283,7 @@ class DbHandler {
         $stmt->close();
         return $result;
     }
- 
+
 }
- 
+
 ?>

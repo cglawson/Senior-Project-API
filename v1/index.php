@@ -1,7 +1,6 @@
 <?php
 
 require_once '../include/dbhandler.php';
-require_once '../include/passhash.php';
 require '.././libs/Slim/Slim.php';
 
 \Slim\Slim::registerAutoloader();
@@ -68,9 +67,6 @@ $app->post('/register', function() use ($app) {
             $androidID = $app->request->post('androidID');
             $phoneNumber = $app->request->post('phoneNumber');
 
-            // validating email address
-            //validateEmail($email);
-
             $db = new DbHandler();
             $res = $db->createUser($username, $androidID, $phoneNumber);
 
@@ -82,7 +78,7 @@ $app->post('/register', function() use ($app) {
                 $response["message"] = "Oops! An error occurred while registering";
             } else if ($res == USER_ALREADY_EXISTED) {
                 $response["error"] = true;
-                $response["message"] = "Sorry, this email already existed";
+                $response["message"] = "Sorry, that username is taken";
             }
             // echo json response
             echoRespnse(201, $response);
