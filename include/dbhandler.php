@@ -11,53 +11,49 @@ class DbHandler {
     private $conn;
  
     function __construct() {
-        require_once dirname(__FILE__) . './dbconnect.php';
+        require_once dirname(__FILE__) . '/dbconnect.php';
         // opening db connection
         $db = new DbConnect();
         $this->conn = $db->connect();
     }
  
-    /* ------------- `users` table method ------------------ */
+    /* ------------- `sp_users` table method ------------------ */
  
     /**
      * Creating new user
-     * @param String $name User full name
-     * @param String $email User login email id
-     * @param String $password User login password
+     * @param String $username Display name of user
+     * @param String $androidID ID of android user
+     * @param String $phoneNumber Phone number of user if applicable
      */
-    public function createUser($name, $email, $password) {
-        require_once 'PassHash.php';
+    public function createUser($username, $androidID, $phoneNumber) {
+        require_once 'passhash.php';
         $response = array();
- 
-        // First check if user already existed in db
-        if (!$this->isUserExists($email)) {
-            // Generating password hash
-            $password_hash = PassHash::hash($password);
- 
-            // Generating API key
-            $api_key = $this->generateApiKey();
- 
-            // insert query
-            $stmt = $this->conn->prepare("INSERT INTO users(name, email, password_hash, api_key, status) values(?, ?, ?, ?, 1)");
-            $stmt->bind_param("ssss", $name, $email, $password_hash, $api_key);
- 
+        
+        //Is the username taken?
+        if (!$this->UserExists($username)) {
+            
+            //Generate an API key for server-client interactions.
+            //$apiKey = $this->generateApiKey($username,$androidID);
+            $apiKey = $androidID;
+            
+            //Insert upon success.
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_apikey, user_phone) VALUES(?,?,?)");
+            $stmt->bind_param("sss", $username, $apiKey, $phoneNumber);
+            
             $result = $stmt->execute();
- 
             $stmt->close();
- 
-            // Check for successful insertion
-            if ($result) {
-                // User successfully inserted
+            
+            if ($result){
                 return USER_CREATED_SUCCESSFULLY;
             } else {
-                // Failed to create user
                 return USER_CREATE_FAILED;
             }
         } else {
-            // User with same email already existed in the db
-            return USER_ALREADY_EXISTED;
+            /**
+             * Try to log in the user with the username + ANDROID_ID tag.
+             * On fail, ask user to choose another username.
+             */
         }
- 
         return $response;
     }
  
@@ -103,13 +99,13 @@ class DbHandler {
     }
  
     /**
-     * Checking for duplicate user by email address
-     * @param String $email email to check in db
+     * Check for unique username
+     * @param String $username Name to check for in database
      * @return boolean
      */
-    private function isUserExists($email) {
-        $stmt = $this->conn->prepare("SELECT id from users WHERE email = ?");
-        $stmt->bind_param("s", $email);
+    private function userExists($username) {
+        $stmt = $this->conn->prepare("SELECT user_id from sp_users WHERE user_name = ?");
+        $stmt->bind_param("s", $username);
         $stmt->execute();
         $stmt->store_result();
         $num_rows = $stmt->num_rows;
@@ -182,10 +178,12 @@ class DbHandler {
     }
  
     /**
-     * Generating random Unique MD5 String for user Api key
+     * Generating unique key for server-client interactions
+     * @param String $username Usernames are guaranteed to be unique
+     * @param String $androidID ANDROID_ID is usually unique, used for obfuscation
      */
     private function generateApiKey() {
-        return md5(uniqid(rand(), true));
+        
     }
  
     /* ------------- `tasks` table method ------------------ */
