@@ -102,11 +102,43 @@ class DbHandler {
     /**
      * Generating unique key for server-client interactions
      * @param String $username Usernames are guaranteed to be unique
-     * @param String $androidID ANDROID_ID is usually unique, used for obfuscation
+     * @param String $androidID ANDROID_ID is usually unique
      */
     private function generateApiKey($username, $androidID) {
         return password_hash($username . $androidID, PASSWORD_DEFAULT);
     }
 
+    /**
+     * If the username + androidID hash matches up with what's in the DB,
+     * Update the key and return the API key to the user.
+     * accounts.
+     * @param String $username
+     * @param String $androidID
+     */
+    public function updateApiKey($username, $androidID) {
+        $stmt = $this->conn->prepare("SELECT user_apikey FROM SeniorProject.sp_users WHERE sp_username = ?");
+        $stmt->bind_param("s", $username);
+        if ($stmt->execute()) {
+            $apiKey = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (password_verify($username . $androidID, $apiKey)) {
+                $apiKey = generateApiKey($username,$androidID); //Generate a new API Key
+                $stmt = $this->conn->prepare("UPDATE SET SeniorProject.sp_users user_apikey = ? WHERE user_name = ?");
+                $stmt->bind_param("ss", $apikey, $username);
+                if($stmt->execute()){
+                    $stmt->close();
+                    return $apiKey;
+                } else {
+                    $stmt->close();
+                    return NULL;
+                }
+            }
+        } else {
+            return NULL;
+        }
+    }
+
 }
+
 ?>
