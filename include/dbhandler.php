@@ -58,7 +58,7 @@ class DbHandler {
      * @return boolean
      */
     private function userExists($username) {
-        $stmt = $this->conn->prepare("SELECT user_id from SeniorProject.sp_users WHERE user_name = ?");
+        $stmt = $this->conn->prepare("SELECT user_id FROM SeniorProject.sp_users WHERE user_name = ?");
         $stmt->bind_param("s", $username);
         $stmt->execute();
         $stmt->store_result();
@@ -72,7 +72,7 @@ class DbHandler {
      * @param String $api_key user api key
      */
     public function getUserId($api_key) {
-        $stmt = $this->conn->prepare("SELECT id FROM users WHERE api_key = ?");
+        $stmt = $this->conn->prepare("SELECT user_id FROM SeniorProject.sp_users WHERE user_apikey = ?");
         $stmt->bind_param("s", $api_key);
         if ($stmt->execute()) {
             $user_id = $stmt->get_result()->fetch_assoc();
@@ -84,13 +84,13 @@ class DbHandler {
     }
 
     /**
-     * Validating user api key
+     * Validating user API key
      * If the api key is there in db, it is a valid key
      * @param String $api_key user api key
      * @return boolean
      */
     public function isValidApiKey($api_key) {
-        $stmt = $this->conn->prepare("SELECT id from users WHERE api_key = ?");
+        $stmt = $this->conn->prepare("SELECT user_id FROM SeniorProject.sp_users WHERE user_apikey = ?");
         $stmt->bind_param("s", $api_key);
         $stmt->execute();
         $stmt->store_result();
@@ -110,7 +110,7 @@ class DbHandler {
 
     /**
      * If the username + androidID hash matches up with what's in the DB,
-     * Update the key and return the API key to the user.
+     * update the key and return the API key to the user.
      * accounts.
      * @param String $username
      * @param String $androidID
@@ -128,7 +128,7 @@ class DbHandler {
                 $stmt->bind_param("ss", $apikey, $username);
                 if($stmt->execute()){
                     $stmt->close();
-                    return $apiKey;
+                    return $apiKey; //Give the user their new API Key
                 } else {
                     $stmt->close();
                     return NULL;
