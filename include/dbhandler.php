@@ -1,10 +1,9 @@
 <?php
 
 /**
- * Class to handle all db operations
- * This class will have CRUD methods for database tables
+ * Class handles CRUD operations with the database.
  *
- * @author Ravi Tamada
+ * @author Caleb Lawson <caleb@lawson.rocks>
  */
 class DbHandler {
 
@@ -20,10 +19,10 @@ class DbHandler {
     /* ------------- `sp_users` table method ------------------ */
 
     /**
-     * Creating new user
-     * @param String $username Display name of user
-     * @param String $androidID ID of android user
-     * @param String $phoneNumber Phone number of user if applicable
+     * Creating new user.
+     * @param String $username Display name of user.
+     * @param String $androidID ID of android user.
+     * @param String $phoneNumber Phone number of user if applicable.
      */
     public function createUser($username, $androidID, $phoneNumber) {
         $response = array();
@@ -53,8 +52,8 @@ class DbHandler {
     }
 
     /**
-     * Check for unique username
-     * @param String $username Name to check for in database
+     * Check for unique username.
+     * @param String $username Name to check for in database.
      * @return boolean
      */
     private function userExists($username) {
@@ -68,8 +67,8 @@ class DbHandler {
     }
 
     /**
-     * Fetching user id by api key
-     * @param String $api_key user api key
+     * Fetching user ID by API key.
+     * @param String $api_key User API key.
      */
     public function getUserId($api_key) {
         $stmt = $this->conn->prepare("SELECT user_id FROM SeniorProject.sp_users WHERE user_apikey = ?");
@@ -84,8 +83,8 @@ class DbHandler {
     }
 
     /**
-     * Validating user API key
-     * If the api key is there in db, it is a valid key
+     * Validating user API key.
+     * If the api key is there in db, it is a valid key.
      * @param String $api_key user api key
      * @return boolean
      */
@@ -100,9 +99,9 @@ class DbHandler {
     }
 
     /**
-     * Generating unique key for server-client interactions
-     * @param String $username Usernames are guaranteed to be unique
-     * @param String $androidID ANDROID_ID is usually unique
+     * Generating unique key for server-client interactions.
+     * @param String $username Usernames are guaranteed to be unique.
+     * @param String $androidID ANDROID_ID is usually unique.
      */
     private function generateApiKey($username, $androidID) {
         return password_hash($username . $androidID, PASSWORD_DEFAULT);
@@ -112,8 +111,9 @@ class DbHandler {
      * If the username + androidID hash matches up with what's in the DB,
      * update the key and return the API key to the user.
      * accounts.
-     * @param String $username
+     * @param String $username 
      * @param String $androidID
+     * @return String
      */
     public function updateApiKey($username, $androidID) {
         $stmt = $this->conn->prepare("SELECT user_apikey FROM SeniorProject.sp_users WHERE sp_username = ?");

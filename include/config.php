@@ -1,6 +1,9 @@
 <?php
+
 /**
- * Database configuration
+ * Database configuration file.
+ * 
+ * @author Caleb Lawson <caleb@lawson.rocks>
  */
 define('DB_USERNAME', 'test');
 define('DB_PASSWORD', 'test');

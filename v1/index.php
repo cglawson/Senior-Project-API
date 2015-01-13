@@ -1,5 +1,11 @@
 <?php
 
+/**
+ * Where the API meets the road.
+ * 
+ * @author Caleb Lawson <caleb@lawson.rocks>
+ */
+
 require_once '../include/dbhandler.php';
 require '.././libs/Slim/Slim.php';
 
@@ -7,18 +13,19 @@ require '.././libs/Slim/Slim.php';
 
 $app = new \Slim\Slim();
 
-// User id from db - Global Variable
+// User ID from database, used in conjunction with the authenticate function - Global
 $user_id = NULL;
 
 /**
- * Verifying required params posted or not
+ * Verifying whether required parameters are present.
+ * @param Array $required_fields Array of required parameters.
  */
 function verifyRequiredParams($required_fields) {
     $error = false;
     $error_fields = "";
     $request_params = array();
     $request_params = $_REQUEST;
-    // Handling PUT request params
+    // Handling PUT request parameters.
     if ($_SERVER['REQUEST_METHOD'] == 'PUT') {
         $app = \Slim\Slim::getInstance();
         parse_str($app->request()->getBody(), $request_params);
@@ -31,21 +38,22 @@ function verifyRequiredParams($required_fields) {
     }
 
     if ($error) {
-        // Required field(s) are missing or empty
-        // echo error json and stop the app
+        // Required field(s) are missing or empty.
+        // Echo error json and stop the app.
         $response = array();
         $app = \Slim\Slim::getInstance();
         $response["error"] = true;
-        $response["message"] = 'Required field(s) ' . substr($error_fields, 0, -2) . ' is missing or empty';
+        $response["message"] = 'Required field(s) ' . substr($error_fields, 0, -2) .
+                ' are missing or empty';
         echoRespnse(400, $response);
         $app->stop();
     }
 }
 
 /**
- * Echoing json response to client
- * @param String $status_code Http response code
- * @param Int $response Json response
+ * Echoing json response to client.
+ * @param String $status_code Http response code.
+ * @param Int $response Json response.
  */
 function echoRespnse($status_code, $response) {
     $app = \Slim\Slim::getInstance();
@@ -59,8 +67,8 @@ function echoRespnse($status_code, $response) {
 }
 
 /**
- * Adding Middle Layer to authenticate every request
- * Checking if the request has valid api key in the 'Authorization' header
+ * Adding Middle Layer to authenticate every request.
+ * Checking if the request has valid API key in the 'Authorization' header.
  */
 function authenticate(\Slim\Route $route) {
     // Getting request headers
@@ -78,7 +86,7 @@ function authenticate(\Slim\Route $route) {
         if (!$db->isValidApiKey($api_key)) {
             // api key is not present in users table
             $response["error"] = true;
-            $response["message"] = "Access Denied. Invalid Api key";
+            $response["message"] = "Invalid API key.  Access denied.";
             echoRespnse(401, $response);
             $app->stop();
         } else {
@@ -89,7 +97,7 @@ function authenticate(\Slim\Route $route) {
     } else {
         // api key is missing in header
         $response["error"] = true;
-        $response["message"] = "Api key is misssing";
+        $response["message"] = "API key missing.";
         echoRespnse(400, $response);
         $app->stop();
     }
@@ -121,13 +129,14 @@ $app->post('/register', function() use ($app) {
 
             if ($res == USER_CREATED_SUCCESSFULLY) {
                 $response["error"] = false;
-                $response["message"] = "You are successfully registered";
+                $response["message"] = "You have sucessfully registered!";
             } else if ($res == USER_CREATE_FAILED) {
                 $response["error"] = true;
-                $response["message"] = "Oops! An error occurred while registering";
+                $response["message"] = "Oops, an exception has occured!";
             } else if ($res == USER_ALREADY_EXISTED) {
                 $response["error"] = true;
-                $response["message"] = "Sorry, that username is taken";
+                $response["message"] = "Sorry, either that username is taken, "
+                        . "or you have already registered.";
             }
             // echo json response
             echoRespnse(201, $response);

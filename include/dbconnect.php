@@ -1,9 +1,9 @@
 <?php
  
 /**
- * Handling database connection
+ * Database connection handler.
  *
- * @author Ravi Tamada
+ * @author Caleb Lawson <caleb@lawson.rocks>
  */
 class DbConnect {
  
