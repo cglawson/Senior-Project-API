@@ -16,8 +16,6 @@ class DbHandler {
         $this->conn = $db->connect();
     }
 
-    /* ------------- `sp_users` table method ------------------ */
-
     /**
      * Creating new user.
      * @param String $username Display name of user.
@@ -138,6 +136,24 @@ class DbHandler {
     }
 
     /**
+     * Users are friends if their relationship is symmetrical in the SeniorProject.sp_friends table. 
+     * @param int $initiator User_ID from the sp_users table
+     * @param int $target User_ID from the sp_users table
+     * @return boolean
+     */
+    public function friends($initiator, $target) {
+        $friends = false;
+
+        $stmt = $this->conn->prepare("SELECT friend_shipid FROM SeniorProject.sp_friends WHERE (friend_initiatorid = ? AND friend_initiatorid = ?) OR (friend_initiatorid = ? AND friend_initiatorid = ?)");
+        $stmt->bind_param("iiii,$initiator,$target, $target, $initiator");
+        $stmt->execute();
+        $stmt->store_result();
+        $num_rows = $stmt->num_rows;
+        $stmt->close();
+        return $num_rows > 1; //If there are two rows, the relationships is symmetrical.
+    }
+
+    /**
      * Determine the value of a particular Boop.
      * @param int $initiator User_ID of the sender.
      * @param int $target User_ID of the receiver.
@@ -147,14 +163,14 @@ class DbHandler {
         $initiatorPowerUps = array();
         $targetPowerUps = array();
         $value = 1;
-        
+
         $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
         $stmt->bind_param("s", $initiator);
         $stmt->exexute();
         $initiatorPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-        
-        foreach($initiatorPowerUps as $powerUpID){
-            switch($powerUpID){
+
+        foreach ($initiatorPowerUps as $powerUpID) {
+            switch ($powerUpID) {
                 case 0:
                     break;
                 case 1:
@@ -163,14 +179,14 @@ class DbHandler {
                     break;
             }
         }
-        
+
         $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
         $stmt->bind_param("s", $target);
         $stmt->exexute();
         $targetPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-        
-        foreach($initiatorPowerUps as $powerUpID){
-            switch($powerUpID){
+
+        foreach ($initiatorPowerUps as $powerUpID) {
+            switch ($powerUpID) {
                 case 0:
                     break;
                 case 1:
@@ -179,7 +195,7 @@ class DbHandler {
                     break;
             }
         }
-        
+
         return $value;
     }
 
