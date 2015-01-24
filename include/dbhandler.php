@@ -23,9 +23,9 @@ class DbHandler {
      * @param String $username Display name of user.
      * @param String $androidID ID of android user.
      * @param String $phoneNumber Phone number of user if applicable.
+     * @return int 
      */
-    public function createUser($username, $androidID, $phoneNumber) {
-        $response = array();
+    public function createUser($username, $androidID) {
 
         //Is the username taken?
         if (!$this->UserExists($username)) {
@@ -34,8 +34,8 @@ class DbHandler {
             $apiKey = $this->generateApiKey($username, $androidID);
 
             //Insert upon success.
-            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_apikey, user_phone, user_likessent, user_likesreceived)VALUES(?,?,?,0,0)");
-            $stmt->bind_param("sss", $username, $apiKey, $phoneNumber);
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_apikey, user_sentscore, user_receivedscore)VALUES(?,?,0,0)");
+            $stmt->bind_param("ss", $username, $apiKey);
 
             $result = $stmt->execute();
             $stmt->close();
@@ -45,10 +45,8 @@ class DbHandler {
             } else {
                 return USER_CREATE_FAILED;
             }
-        } else {
-            return USER_ALREADY_EXISTED;
         }
-        return $response;
+        return USER_ALREADY_EXISTED;
     }
 
     /**
@@ -123,19 +121,93 @@ class DbHandler {
             $stmt->close();
 
             if (password_verify($username . $androidID, $apiKey)) {
-                $apiKey = generateApiKey($username,$androidID); //Generate a new API Key
+                $apiKey = generateApiKey($username, $androidID); //Generate a new API Key
                 $stmt = $this->conn->prepare("UPDATE SET SeniorProject.sp_users user_apikey = ? WHERE user_name = ?");
                 $stmt->bind_param("ss", $apikey, $username);
-                if($stmt->execute()){
+                if ($stmt->execute()) {
                     $stmt->close();
                     return $apiKey; //Give the user their new API Key
                 } else {
                     $stmt->close();
-                    return NULL;
+                    return OPERATION_FAILED;
                 }
             }
         } else {
-            return NULL;
+            return OPERATION_FAILED;
+        }
+    }
+
+    /**
+     * Determine the value of a particular Boop.
+     * @param int $initiator User_ID of the sender.
+     * @param int $target User_ID of the receiver.
+     * @return int
+     */
+    public function boopValue($initiator, $target) {
+        $initiatorPowerUps = array();
+        $targetPowerUps = array();
+        $value = 1;
+        
+        $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
+        $stmt->bind_param("s", $initiator);
+        $stmt->exexute();
+        $initiatorPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+        
+        foreach($initiatorPowerUps as $powerUpID){
+            switch($powerUpID){
+                case 0:
+                    break;
+                case 1:
+                    break;
+                case 2:
+                    break;
+            }
+        }
+        
+        $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
+        $stmt->bind_param("s", $target);
+        $stmt->exexute();
+        $targetPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+        
+        foreach($initiatorPowerUps as $powerUpID){
+            switch($powerUpID){
+                case 0:
+                    break;
+                case 1:
+                    break;
+                case 2:
+                    break;
+            }
+        }
+        
+        return $value;
+    }
+
+    /**
+     * Send a Boop to a user.
+     * @param int $initiator User_ID of the sender.
+     * @param int $target User_ID of the receiver.
+     */
+    public function boopUser($initiator, $target) {
+        $timestamp = date('Y-m-d G:i:s');
+
+        $value = boopValue($initiator, $target);
+
+        $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_activities(activity_initiator, activity_target, activity_timestamp) VALUES(?,?,?) WHERE EXISTS( SELECT * FROM SeniorProject.sp_users WHERE user_id = ?)");
+        $stmt->bind_param("iisi", $initiator, $target, $timestamp, $target);
+        if ($stmt->execute()) {
+            $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likessent = user_likessent + ? WHERE user_id = ?");
+            $stmt->bind_param("ii", $initiator, $value);
+            $stmt->execute();
+
+            $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likesreceived = user_likesreceived + ? WHERE user_id = ?");
+            $stmt->bind_param("ii", $target, $value);
+            $stmt->execute();
+
+            $stmt->close();
+            return OPERATION_SUCCESS;
+        } else {
+            return OPERATION_FAILED;
         }
     }
 
