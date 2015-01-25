@@ -153,8 +153,8 @@ class DbHandler {
 
     /**
      * Add friends entry to database.
-     * @param int $initiator User_ID from the sp_users table
-     * @param int $target User_ID from the sp_users table
+     * @param int $initiator User_ID from the sp_users table.
+     * @param int $target User_ID from the sp_users table.
      */
     public function addFriend($initiator, $target) {
         $stmt = $this->conn->prepare("SELECT friend_shipid FROM SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
@@ -176,6 +176,75 @@ class DbHandler {
         }
 
         return ALREADY_EXISTS;
+    }
+
+    /**
+     * Get friends of a particular user.
+     * @param int $initiator User_ID from the sp_users table.
+     * @return array Array of user friends.
+     */
+    public function getFriends($initiator) {
+        $potentialFriends = array();
+        $friends = array();
+
+        $stmt = $this->conn->prepare("SELECT friend_targetid FROM SeniorProject.sp_friends WHERE friend_initiatorid = ?");
+        $stmt->bind_param("i", $initiator);
+        if ($stmt->execute()) {
+            $potentialFriends = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+            foreach ($potentialFriends as $target) {
+                if (friends($initiator, $target)) {
+                    $friends[] = $target;
+                }
+            }
+            return $friends;
+        }
+        return OPERATION_FAILED;
+    }
+
+    /**
+     * Get friends you've added, but not added you back.
+     * @param int $initiator User_ID from the sp_users table.
+     * @return array Array of pending friend requests.
+     */
+    public function getPendingRequests($initiator) {
+        $potentialPending = array();
+        $pending = array();
+
+        $stmt = $this->conn->prepare("SELECT friend_targetid FROM SeniorProject.sp_friends WHERE friend_initiatorid = ?");
+        $stmt->bind_param("i", $initiator);
+        if ($stmt->execute()) {
+            $potentialPending = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+            foreach ($potentialPending as $target) {
+                if (!friends($initiator, $target)) {
+                    $pending[] = $target;
+                }
+            }
+            return $pending;
+        }
+        return OPERATION_FAILED;
+    }
+    
+    /**
+     * Get users that wish to friend you.
+     * @param int $initiator User_ID from the sp_users table.
+     * @return array Array of pending friend requests.
+     */
+    public function getFriendRequests($target) {
+        $potentialPending = array();
+        $pending = array();
+
+        $stmt = $this->conn->prepare("SELECT friend_initiatortid FROM SeniorProject.sp_friends WHERE friend_targetrid = ?");
+        $stmt->bind_param("i", $target);
+        if ($stmt->execute()) {
+            $potentialPending = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+            foreach ($potentialPending as $initiator) {
+                if (!friends($initiator, $target)) {
+                    $pending[] = $initiator;
+                }
+            }
+            return $pending;
+        }
+        return OPERATION_FAILED;
     }
 
     /**

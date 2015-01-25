@@ -128,13 +128,10 @@ $app->post('/register', function() use ($app) {
             $res = $db->createUser($username, $androidID, $phoneNumber);
 
             if ($res == USER_CREATED_SUCCESSFULLY) {
-                $response["error"] = false;
                 $response["message"] = "You have sucessfully registered!";
             } else if ($res == USER_CREATE_FAILED) {
-                $response["error"] = true;
                 $response["message"] = "Oops, an exception has occured!";
             } else if ($res == USER_ALREADY_EXISTED) {
-                $response["error"] = true;
                 $response["message"] = "Sorry, either that username is taken, "
                         . "or you have already registered.";
             }
