@@ -17,6 +17,16 @@ class DbHandler {
     }
 
     /**
+     * Get the server time in SQL format.
+     * @return String The time in SQL format.
+     */
+    public function getTimestamp() {
+        return date('Y-m-d G:i:s');
+    }
+
+    /* --- sp_users TABLE METHODS --- */
+
+    /**
      * Creating new user.
      * @param String $username Display name of user.
      * @param String $androidID ID of android user.
@@ -135,6 +145,8 @@ class DbHandler {
         }
     }
 
+    /* --- sp_friends TABLE METHODS --- */
+
     /**
      * Users are friends if their relationship is symmetrical in the SeniorProject.sp_friends table. 
      * @param int $initiator User_ID from the sp_users table
@@ -223,10 +235,10 @@ class DbHandler {
         }
         return OPERATION_FAILED;
     }
-    
+
     /**
      * Get users that wish to friend you.
-     * @param int $initiator User_ID from the sp_users table.
+     * @param int $target User_ID from the sp_users table.
      * @return array Array of pending friend requests.
      */
     public function getFriendRequests($target) {
@@ -247,6 +259,24 @@ class DbHandler {
         return OPERATION_FAILED;
     }
 
+    /* --- sp_activities TABLE METHODS --- */
+
+    /**
+     * Check if user is violating cooldown period.
+     * @param int $initiator User_ID of the sender.
+     * @param int $target User_ID of the receiver.
+     * @return boolean
+     */
+    
+    public function cooldownActive($initiator, $target){
+        $stmt = $this->conn->prepare("SELECT activity_timestamp FROM SeniorProject.sp_activities WHERE activity_initiator = ? AND activity_target = ? ORDER BY activity_id DESC LIMIT 1");
+        $stmt->bind_param("ii", $initiator, $target);
+        if($stmt->execute()){
+            $lastBoop = strttotime($stmt->fetchColumn());
+            $timeDifference = date_diff($lastBoop, )
+        }
+    }
+    
     /**
      * Determine the value of a particular Boop.
      * @param int $initiator User_ID of the sender.
@@ -299,12 +329,10 @@ class DbHandler {
      * @param int $target User_ID of the receiver.
      */
     public function boopUser($initiator, $target) {
-        $timestamp = date('Y-m-d G:i:s');
-
         $value = boopValue($initiator, $target);
 
         $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_activities(activity_initiator, activity_target, activity_timestamp) VALUES(?,?,?) WHERE EXISTS( SELECT * FROM SeniorProject.sp_users WHERE user_id = ?)");
-        $stmt->bind_param("iisi", $initiator, $target, $timestamp, $target);
+        $stmt->bind_param("iisi", $initiator, $target, getTimestamp(), $target);
         if ($stmt->execute()) {
             $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likessent = user_likessent + ? WHERE user_id = ?");
             $stmt->bind_param("ii", $initiator, $value);
