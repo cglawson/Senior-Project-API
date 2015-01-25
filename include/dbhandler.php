@@ -142,15 +142,40 @@ class DbHandler {
      * @return boolean
      */
     public function friends($initiator, $target) {
-        $friends = false;
-
         $stmt = $this->conn->prepare("SELECT friend_shipid FROM SeniorProject.sp_friends WHERE (friend_initiatorid = ? AND friend_initiatorid = ?) OR (friend_initiatorid = ? AND friend_initiatorid = ?)");
-        $stmt->bind_param("iiii,$initiator,$target, $target, $initiator");
+        $stmt->bind_param("iiii", $initiator, $target, $target, $initiator);
         $stmt->execute();
         $stmt->store_result();
         $num_rows = $stmt->num_rows;
         $stmt->close();
         return $num_rows > 1; //If there are two rows, the relationships is symmetrical.
+    }
+
+    /**
+     * Add friends entry to database.
+     * @param int $initiator User_ID from the sp_users table
+     * @param int $target User_ID from the sp_users table
+     */
+    public function addFriend($initiator, $target) {
+        $stmt = $this->conn->prepare("SELECT friend_shipid FROM SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
+        $stmt->bind_param("ii", $initiator, $target);
+        $stmt->execute();
+        $stmt->store_result();
+        $num_rows = $stmt->num_rows;
+
+        if ($num_rows == 0) {
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_friends(friend_initiatorid, friend_targetid) VALUES(?,?)");
+            $stmt->bind_param("ii", $initiator, $target);
+            if ($stmt->execute()) {
+                $stmt->close();
+                return OPERATION_SUCCESS;
+            } else {
+                $stmt->close();
+                return OPERATION_FAILED;
+            }
+        }
+
+        return ALREADY_EXISTS;
     }
 
     /**
