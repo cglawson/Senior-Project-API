@@ -189,7 +189,22 @@ class DbHandler {
 
         return ALREADY_EXISTS;
     }
-
+    
+    /**
+     * Remove friends entry from database.
+     * @param int $initiator User_ID from the sp_users table.
+     * @param int $target User_ID from the sp_users table.
+     */
+    public function removeFriend($initiator, $target) {
+        $stmt = $this->conn->prepare("DELETE FROM SeniorProject.sp_friends WHERE (friend_initiatorid = ? AND friend_targetid = ?) OR (friend_initiatorid = ? AND friend_targetid = ?)");
+        $stmt->bind_param("iiii", $initiator, $target, $target, $initiator); // Symmetrical to prevent the friendship from degrading into a friend request.
+        if ($stmt->execute()){
+            return OPERATION_SUCCESS;
+        } else {
+            return OPERATION_FAILED;
+        }
+    }
+    
     /**
      * Get friends of a particular user.
      * @param int $initiator User_ID from the sp_users table.
