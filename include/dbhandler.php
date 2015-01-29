@@ -267,16 +267,22 @@ class DbHandler {
      * @param int $target User_ID of the receiver.
      * @return boolean
      */
-    
-    public function cooldownActive($initiator, $target){
+    public function cooldownActive($initiator, $target) {
         $stmt = $this->conn->prepare("SELECT activity_timestamp FROM SeniorProject.sp_activities WHERE activity_initiator = ? AND activity_target = ? ORDER BY activity_id DESC LIMIT 1");
         $stmt->bind_param("ii", $initiator, $target);
-        if($stmt->execute()){
+        
+        if ($stmt->execute()) {
             $lastBoop = strttotime($stmt->fetchColumn());
-            $timeDifference = date_diff($lastBoop, )
+            
+            if ($lastBoop < (getTimestamp() - (10 * 60))) {
+                return false;
+            } else {
+                return true;
+            }
         }
+        return OPERATION_FAILED;
     }
-    
+
     /**
      * Determine the value of a particular Boop.
      * @param int $initiator User_ID of the sender.
