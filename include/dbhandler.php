@@ -145,6 +145,24 @@ class DbHandler {
         }
     }
 
+    /**
+     * Updates the user's latitude and longitude.
+     * @param int $userID
+     * @param double $latitude
+     * @param double $longitude
+     */
+    public function update_location($userID, $latitude, $longitude) {
+        $stmt = $this->conn->prepare("UPDATE SET SeniorProject.sp_users user_latitude = ?, user_longitude = ? WHERE user_id = ?");
+        $stmt->bind_param("idd", $latitude, $longitude, $userID);
+        if($stmt->execute()){
+            $stmt->close();
+            return OPERATION_SUCCESS;
+        } else {
+            $stmt->close;
+            return OPERATION_FAILED;
+        }        
+    }
+
     /* --- sp_friends TABLE METHODS --- */
 
     /**
@@ -189,7 +207,7 @@ class DbHandler {
 
         return ALREADY_EXISTS;
     }
-    
+
     /**
      * Remove friends entry from database.
      * @param int $initiator User_ID from the sp_users table.
@@ -198,13 +216,13 @@ class DbHandler {
     public function removeFriend($initiator, $target) {
         $stmt = $this->conn->prepare("DELETE FROM SeniorProject.sp_friends WHERE (friend_initiatorid = ? AND friend_targetid = ?) OR (friend_initiatorid = ? AND friend_targetid = ?)");
         $stmt->bind_param("iiii", $initiator, $target, $target, $initiator); // Symmetrical to prevent the friendship from degrading into a friend request.
-        if ($stmt->execute()){
+        if ($stmt->execute()) {
             return OPERATION_SUCCESS;
         } else {
             return OPERATION_FAILED;
         }
     }
-    
+
     /**
      * Get friends of a particular user.
      * @param int $initiator User_ID from the sp_users table.
@@ -285,10 +303,10 @@ class DbHandler {
     public function cooldownActive($initiator, $target) {
         $stmt = $this->conn->prepare("SELECT activity_timestamp FROM SeniorProject.sp_activities WHERE activity_initiator = ? AND activity_target = ? ORDER BY activity_id DESC LIMIT 1");
         $stmt->bind_param("ii", $initiator, $target);
-        
+
         if ($stmt->execute()) {
             $lastBoop = strttotime($stmt->fetchColumn());
-            
+
             if ($lastBoop < (getTimestamp() - (10 * 60))) {
                 return false;
             } else {
