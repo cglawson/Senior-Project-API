@@ -42,8 +42,8 @@ class DbHandler {
             $apiKey = $this->generateApiKey($username, $androidID);
 
             //Insert upon success.
-            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_apikey, user_sentscore, user_receivedscore)VALUES(?,?,0,0)");
-            $stmt->bind_param("ss", $username, $apiKey);
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_name_timestamp, user_apikey, user_sentscore, user_receivedscore)VALUES(?,?,?,0,0)");
+            $stmt->bind_param("sss", $username, getTimestamp(), $apiKey);
 
             $result = $stmt->execute();
             $stmt->close();
@@ -151,16 +151,49 @@ class DbHandler {
      * @param double $latitude
      * @param double $longitude
      */
-    public function update_location($userID, $latitude, $longitude) {
+    public function updateLocation($userID, $latitude, $longitude) {
         $stmt = $this->conn->prepare("UPDATE SET SeniorProject.sp_users user_latitude = ?, user_longitude = ? WHERE user_id = ?");
         $stmt->bind_param("idd", $latitude, $longitude, $userID);
-        if($stmt->execute()){
+        if ($stmt->execute()) {
             $stmt->close();
             return OPERATION_SUCCESS;
         } else {
-            $stmt->close;
+            $stmt->close();
             return OPERATION_FAILED;
-        }        
+        }
+    }
+
+    /**
+     * Updates the user's name.  This can occur only every fourteen days.
+     * @param int $userID
+     * @param int $newUsername
+     * @return int Days until username can be updated again.
+     */
+    public function updateUsername($userID, $newUsername) {
+        $stmt = $this->conn->prepare("SELECT user_name_timestamp FROM SeniorProject.spusers WHERE user_id = ?");
+        $stmt->bind_param("i", $userID);
+
+        if ($stmt->execute()) {
+            $lastUpdated = strtotime($stmt->fetchColumn());
+
+            if ($lastUpdated < strtotime('-14 days')) {
+                if(!$this->userExists($newUsername)) {
+                    $stmt = $this->conn->prepare("UPDATE SET SeniorProject.sp_users user_name = ? WHERE user_id = ?");
+                    $stmt->bind_param("si", $newUsername, $userID);
+                    if($stmt->execute()){
+                        $stmt->close();
+                        return OPERATION_SUCCESS;
+                    } else {
+                        return OPERATION_FAILED;
+                    }
+                } else {
+                    return USER_ALREADY_EXISTED;
+                }
+            } else {
+                return 14 - ((strtotime('now') - $lastUpdated) / 60 / 60 / 24);  // Days remaining.
+            }
+        }
+        return OPERATION_FAILED;
     }
 
     /* --- sp_friends TABLE METHODS --- */
@@ -307,7 +340,7 @@ class DbHandler {
         if ($stmt->execute()) {
             $lastBoop = strttotime($stmt->fetchColumn());
 
-            if ($lastBoop < (getTimestamp() - (10 * 60))) {
+            if ($lastBoop < strtotime('-10 minutes')) {
                 return false;
             } else {
                 return true;
