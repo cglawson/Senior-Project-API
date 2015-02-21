@@ -5,7 +5,6 @@
  * 
  * @author Caleb Lawson <caleb@lawson.rocks>
  */
-
 require_once '../include/dbhandler.php';
 require '.././libs/Slim/Slim.php';
 
@@ -81,9 +80,9 @@ function authenticate(\Slim\Route $route) {
         $db = new DbHandler();
 
         // get the api key
-        $api_key = $headers['Authorization'];
+        $apiKey = $headers['Authorization'];
         // validating api key
-        if (!$db->isValidApiKey($api_key)) {
+        if (!$db->isValidApiKey($apiKey)) {
             // api key is not present in users table
             $response["error"] = true;
             $response["message"] = "Invalid API key.  Access denied.";
@@ -92,7 +91,7 @@ function authenticate(\Slim\Route $route) {
         } else {
             global $user_id;
             // get user primary key id
-            $user_id = $db->getUserId($api_key);
+            $user_id = $db->getUserId($apiKey);
         }
     } else {
         // api key is missing in header
@@ -106,42 +105,101 @@ function authenticate(\Slim\Route $route) {
 /**
  * ----------- METHODS WITHOUT AUTHENTICATION ---------------------------------
  */
-
 /**
  * User Registration
  * url - /register
  * method - POST
- * params - username, androidID, phoneNumber
+ * params - username, androidID
  */
 $app->post('/register', function() use ($app) {
-            // check for required params
-            verifyRequiredParams(array('username', 'androidID', 'phoneNumber'));
+    // check for required params
+    verifyRequiredParams(array('username', 'androidID'));
 
-            $response = array();
+    $response = array();
 
-            // reading post params
-            $username = $app->request->post('username');
-            $androidID = $app->request->post('androidID');
-            $phoneNumber = $app->request->post('phoneNumber');
+    // reading post params
+    $username = strtolower($app->request->post('username'));
+    $androidID = $app->request->post('androidID');
 
-            $db = new DbHandler();
-            $res = $db->createUser($username, $androidID, $phoneNumber);
+    $db = new DbHandler();
+    $res = $db->createUser($username, $androidID);
 
-            if ($res == USER_CREATED_SUCCESSFULLY) {
-                $response["message"] = "You have sucessfully registered!";
-            } else if ($res == USER_CREATE_FAILED) {
-                $response["message"] = "Oops, an exception has occured!";
-            } else if ($res == USER_ALREADY_EXISTED) {
-                $response["message"] = "Sorry, either that username is taken, "
-                        . "or you have already registered.";
-            }
-            // echo json response
-            echoRespnse(201, $response);
-        });
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "An exception has occured!";
+    } else if ($res == ALREADY_EXISTS) {
+        $response["message"] = "Username already registered.";
+    } else {
+        $response["message"] = "Successfully registered.";
+        $response["apikey"] = $res;
+    }
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Refresh API Key
+ * url - /update_key
+ * method - POST
+ * params - username, androidID
+ */
+$app->post('/update_key', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('username', 'androidID'));
+
+    $response = array();
+
+    // reading post params
+    $username = strtolower($app->request->post('username'));
+    $androidID = $app->request->post('androidID');
+
+    $db = new DbHandler();
+    $res = $db->updateApiKey($username, $androidID);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "An exception has occured!";
+    } else {
+        $response["message"] = "Successfully updated.";
+        $response["apikey"] = $res;
+    }
+    // echo json response
+    echoRespnse(201, $response);
+});
 
 /**
  * ------------------------ METHODS WITH AUTHENTICATION ------------------------
  */
+/**
+ * Update username.
+ * method POST
+ * url /update_username
+ */
+$app->post('/update_username', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('newUsername'));
+
+    $response = array();
+
+    // reading post params
+    $newUsername = strtolower($app->request->post('newUsername'));
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->updateUsername($user_id["user_id"], $newUsername);
+
+    if ($res == OPERATION_SUCCESS) {
+        $response["message"] = "Successfully updated.";
+        $response["username"] = $newUsername;
+    } else if ($res == OPERATION_FAILED) {
+        $response["message"] = "An exception has occured!";
+    } else if ($res == ALREADY_EXISTS) {
+        $response["message"] = "Username already claimed.";
+    } else {
+        $response["message"] = "A username can only be updated every 14 days.";
+        $response["days_remaining"] = $res;
+    }
+    // echo json response
+    echoRespnse(201, $response);
+});
 
 $app->run();
 ?>

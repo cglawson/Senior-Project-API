@@ -6,7 +6,7 @@
  * @author Caleb Lawson <caleb@lawson.rocks>
  */
 class DbHandler {
-
+    
     private $conn;
 
     function __construct() {
@@ -14,13 +14,14 @@ class DbHandler {
         // opening db connection
         $db = new DbConnect();
         $this->conn = $db->connect();
+        date_default_timezone_set('America/Chicago');
     }
 
     /**
      * Get the server time in SQL format.
      * @return String The time in SQL format.
      */
-    public function getTimestamp() {
+    public function SQLTimestamp() {
         return date('Y-m-d G:i:s');
     }
 
@@ -31,30 +32,30 @@ class DbHandler {
      * @param String $username Display name of user.
      * @param String $androidID ID of android user.
      * @param String $phoneNumber Phone number of user if applicable.
-     * @return int 
+     * @return String 
      */
     public function createUser($username, $androidID) {
 
         //Is the username taken?
-        if (!$this->UserExists($username)) {
+        if (!$this->userExists($username)) {
 
             //Generate an API key for server-client interactions.
             $apiKey = $this->generateApiKey($username, $androidID);
 
             //Insert upon success.
-            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_name_timestamp, user_apikey, user_sentscore, user_receivedscore)VALUES(?,?,?,0,0)");
-            $stmt->bind_param("sss", $username, getTimestamp(), $apiKey);
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_name_timestamp, user_apikey, user_sentscore, user_receivedscore)VALUES(?,NOW(),?,0,0)");
+            $stmt->bind_param("ss", $username, $apiKey);
 
             $result = $stmt->execute();
             $stmt->close();
 
             if ($result) {
-                return USER_CREATED_SUCCESSFULLY;
+                return $apiKey;
             } else {
-                return USER_CREATE_FAILED;
+                return OPERATION_FAILED;
             }
         }
-        return USER_ALREADY_EXISTED;
+        return ALREADY_EXISTS;
     }
 
     /**
@@ -116,22 +117,21 @@ class DbHandler {
     /**
      * If the username + androidID hash matches up with what's in the DB,
      * update the key and return the API key to the user.
-     * accounts.
      * @param String $username 
      * @param String $androidID
      * @return String
      */
     public function updateApiKey($username, $androidID) {
-        $stmt = $this->conn->prepare("SELECT user_apikey FROM SeniorProject.sp_users WHERE sp_username = ?");
+        $stmt = $this->conn->prepare("SELECT user_apikey FROM SeniorProject.sp_users WHERE user_name = ?");
         $stmt->bind_param("s", $username);
         if ($stmt->execute()) {
             $apiKey = $stmt->get_result()->fetch_assoc();
             $stmt->close();
 
-            if (password_verify($username . $androidID, $apiKey)) {
-                $apiKey = generateApiKey($username, $androidID); //Generate a new API Key
-                $stmt = $this->conn->prepare("UPDATE SET SeniorProject.sp_users user_apikey = ? WHERE user_name = ?");
-                $stmt->bind_param("ss", $apikey, $username);
+            if (password_verify($username . $androidID, $apiKey["user_apikey"])) {
+                $apiKey = $this->generateApiKey($username, $androidID); //Generate a new API Key
+                $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_apikey = ? WHERE user_name = ?");
+                $stmt->bind_param("ss", $apiKey, $username);
                 if ($stmt->execute()) {
                     $stmt->close();
                     return $apiKey; //Give the user their new API Key
@@ -139,10 +139,51 @@ class DbHandler {
                     $stmt->close();
                     return OPERATION_FAILED;
                 }
+            } else {
+                return OPERATION_FAILED;
             }
         } else {
             return OPERATION_FAILED;
         }
+    }
+
+    /**
+     * Updates the user's name.  This can occur only every fourteen days.
+     * @param int $userID
+     * @param int $newUsername
+     * @return int Days until username can be updated again.
+     */
+    public function updateUsername($userID, $newUsername) {
+        $userID_copy = $userID;
+        $stmt = $this->conn->prepare("SELECT user_name_timestamp FROM SeniorProject.sp_users WHERE user_id = ?");
+        $stmt->bind_param("i", $userID);
+
+        if ($stmt->execute()) {
+            $result = $stmt->get_result()->fetch_assoc();
+            
+            $lastUpdated = date_create($result["user_name_timestamp"]);
+            $now = date_create("now");
+            $daysBetween = date_diff($now, $lastUpdated);
+
+            if ($daysBetween->format("%d") >= 14) {
+                if (!$this->userExists($newUsername)) {
+                    $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_name = ?, user_name_timestamp = NOW() WHERE user_id = ?");
+                    $stmt->bind_param("si", $newUsername, $userID_copy);
+                    if ($stmt->execute()) {
+                        $stmt->close();
+                        return OPERATION_SUCCESS;
+                    } else {
+                        $stmt->close();
+                        return OPERATION_FAILED;
+                    }
+                } else {
+                    return ALREADY_EXISTS;
+                }
+            } else {
+                return 14 - $daysBetween->format("%d");  // Days remaining.
+            }
+        }
+        return OPERATION_FAILED;
     }
 
     /**
@@ -164,38 +205,9 @@ class DbHandler {
     }
 
     /**
-     * Updates the user's name.  This can occur only every fourteen days.
-     * @param int $userID
-     * @param int $newUsername
-     * @return int Days until username can be updated again.
+     * Gets the nearest 25 users.
+     * 
      */
-    public function updateUsername($userID, $newUsername) {
-        $stmt = $this->conn->prepare("SELECT user_name_timestamp FROM SeniorProject.spusers WHERE user_id = ?");
-        $stmt->bind_param("i", $userID);
-
-        if ($stmt->execute()) {
-            $lastUpdated = strtotime($stmt->fetchColumn());
-
-            if ($lastUpdated < strtotime('-14 days')) {
-                if(!$this->userExists($newUsername)) {
-                    $stmt = $this->conn->prepare("UPDATE SET SeniorProject.sp_users user_name = ? WHERE user_id = ?");
-                    $stmt->bind_param("si", $newUsername, $userID);
-                    if($stmt->execute()){
-                        $stmt->close();
-                        return OPERATION_SUCCESS;
-                    } else {
-                        return OPERATION_FAILED;
-                    }
-                } else {
-                    return USER_ALREADY_EXISTED;
-                }
-            } else {
-                return 14 - ((strtotime('now') - $lastUpdated) / 60 / 60 / 24);  // Days remaining.
-            }
-        }
-        return OPERATION_FAILED;
-    }
-
     /* --- sp_friends TABLE METHODS --- */
 
     /**
@@ -236,9 +248,9 @@ class DbHandler {
                 $stmt->close();
                 return OPERATION_FAILED;
             }
+        } else {
+            return ALREADY_EXISTS;
         }
-
-        return ALREADY_EXISTS;
     }
 
     /**
@@ -401,21 +413,25 @@ class DbHandler {
      * @param int $target User_ID of the receiver.
      */
     public function boopUser($initiator, $target) {
-        $value = boopValue($initiator, $target);
+        if (!cooldownActive($initiator, $target)) {
+            $value = boopValue($initiator, $target);
 
-        $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_activities(activity_initiator, activity_target, activity_timestamp) VALUES(?,?,?) WHERE EXISTS( SELECT * FROM SeniorProject.sp_users WHERE user_id = ?)");
-        $stmt->bind_param("iisi", $initiator, $target, getTimestamp(), $target);
-        if ($stmt->execute()) {
-            $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likessent = user_likessent + ? WHERE user_id = ?");
-            $stmt->bind_param("ii", $initiator, $value);
-            $stmt->execute();
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_activities(activity_initiator, activity_target, activity_timestamp) VALUES(?,?,?) WHERE EXISTS( SELECT * FROM SeniorProject.sp_users WHERE user_id = ?)");
+            $stmt->bind_param("iisi", $initiator, $target, getTimestamp(), $target);
+            if ($stmt->execute()) {
+                $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likessent = user_likessent + ? WHERE user_id = ?");
+                $stmt->bind_param("ii", $initiator, $value);
+                $stmt->execute();
 
-            $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likesreceived = user_likesreceived + ? WHERE user_id = ?");
-            $stmt->bind_param("ii", $target, $value);
-            $stmt->execute();
+                $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likesreceived = user_likesreceived + ? WHERE user_id = ?");
+                $stmt->bind_param("ii", $target, $value);
+                $stmt->execute();
 
-            $stmt->close();
-            return OPERATION_SUCCESS;
+                $stmt->close();
+                return OPERATION_SUCCESS;
+            } else {
+                return OPERATION_FAILED;
+            }
         } else {
             return OPERATION_FAILED;
         }
