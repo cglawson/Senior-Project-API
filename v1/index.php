@@ -184,7 +184,7 @@ $app->post('/update_username', 'authenticate', function() use ($app) {
 
     global $user_id;
     $db = new DbHandler();
-    $res = $db->updateUsername($user_id["user_id"], $newUsername);
+    $res = $db->updateUsername($user_id, $newUsername);
 
     if ($res == OPERATION_SUCCESS) {
         $response["message"] = "Successfully updated.";
@@ -197,6 +197,174 @@ $app->post('/update_username', 'authenticate', function() use ($app) {
         $response["message"] = "A username can only be updated every 14 days.";
         $response["days_remaining"] = $res;
     }
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Update location.
+ * method POST
+ * url /update_location
+ */
+$app->post('/update_location', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('latitude', 'longitude'));
+
+    $response = array();
+
+    // reading post params
+    $latitude = $app->request->post('latitude');
+    $longitude = $app->request->post('longitude');
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->updateLocation($user_id, $latitude, $longitude);
+
+    if ($res == OPERATION_SUCCESS) {
+        $response["message"] = "Successfully updated.";
+    } else {
+        $response["message"] = "An exception has occured!";
+    }
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Delete location.
+ * method POST
+ * url /delete_location
+ */
+$app->post('/delete_location', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array());
+
+    $response = array();
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->deleteLocation($user_id);
+
+    if ($res == OPERATION_SUCCESS) {
+        $response["message"] = "Successfully deleted.";
+    } else {
+        $response["message"] = "An exception has occured!";
+    }
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * List all nearby users.
+ * method POST
+ * url /get_nearby
+ */
+$app->post('/get_nearby', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('latitude', 'longitude'));
+
+    $response = array();
+    $response["nearby users"] = [];
+
+    // reading post params
+    $latitude = $app->request->post('latitude');
+    $longitude = $app->request->post('longitude');
+
+    $db = new DbHandler();
+    $res = $db->nearbyUsers($latitude, $longitude);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["message"] = "Success!";
+
+        while ($user = $res->fetch_assoc()) {
+            $tmp = array();
+            $tmp["user_location_id"] = $user["user_location_id"];
+            array_push($response["nearby users"], $tmp);
+        }
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Request a user's friendship.
+ * method POST
+ * url /add_friend
+ */
+$app->post('/add_friend', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('friendID'));
+
+    $response = array();
+
+    // reading post params
+    $friendID = $app->request->post('friendID');
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->addFriend($user_id, $friendID);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["message"] = "Success!";
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Remove a user's friendship.
+ * method POST
+ * url /remove_friend
+ */
+$app->post('/remove_friend', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('friendID'));
+
+    $response = array();
+
+    // reading post params
+    $friendID = $app->request->post('friendID');
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->removeFriend($user_id, $friendID);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["message"] = "Success!";
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * List the friends of a particular user.
+ * method POST
+ * url /get_friends
+ */
+$app->post('/get_friends', 'authenticate', function() use ($app) {
+
+    $response = array();
+    $response["friends"] = [];
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->getFriends($user_id);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["friends"] = $res;
+    }
+
+
     // echo json response
     echoRespnse(201, $response);
 });

@@ -6,7 +6,7 @@
  * @author Caleb Lawson <caleb@lawson.rocks>
  */
 class DbHandler {
-    
+
     private $conn;
 
     function __construct() {
@@ -83,7 +83,7 @@ class DbHandler {
         if ($stmt->execute()) {
             $user_id = $stmt->get_result()->fetch_assoc();
             $stmt->close();
-            return $user_id;
+            return $user_id["user_id"];
         } else {
             return NULL;
         }
@@ -160,7 +160,7 @@ class DbHandler {
 
         if ($stmt->execute()) {
             $result = $stmt->get_result()->fetch_assoc();
-            
+
             $lastUpdated = date_create($result["user_name_timestamp"]);
             $now = date_create("now");
             $daysBetween = date_diff($now, $lastUpdated);
@@ -186,15 +186,24 @@ class DbHandler {
         return OPERATION_FAILED;
     }
 
+    /* --- sp_user_locations TABLE METHODS --- */
+
     /**
-     * Updates the user's latitude and longitude.
+     * Updates the user's latitude and longitude.  Users may have this turned
+     * off in their client settings.
      * @param int $userID
      * @param double $latitude
      * @param double $longitude
      */
     public function updateLocation($userID, $latitude, $longitude) {
-        $stmt = $this->conn->prepare("UPDATE SET SeniorProject.sp_users user_latitude = ?, user_longitude = ? WHERE user_id = ?");
-        $stmt->bind_param("idd", $latitude, $longitude, $userID);
+        $this->deleteLocation($userID);
+
+        // Scaled to MEDIUMINT for SQL.
+        $latitude = $latitude * 10000;
+        $longitude = $longitude * 10000;
+
+        $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_user_locations(user_location_id,user_location_lat,user_location_lon)VALUES(?,?,?)");
+        $stmt->bind_param("idd", $userID, $latitude, $longitude);
         if ($stmt->execute()) {
             $stmt->close();
             return OPERATION_SUCCESS;
@@ -205,9 +214,36 @@ class DbHandler {
     }
 
     /**
-     * Gets the nearest 25 users.
-     * 
+     * Removes the user's latitude and longitude.
+     * @param int $userID
      */
+    public function deleteLocation($userID) {
+        $stmt = $this->conn->prepare("DELETE IGNORE FROM SeniorProject.sp_user_locations WHERE user_location_id = ?");
+        $stmt->bind_param("i", $userID);
+        $stmt->execute();
+        $stmt->close();
+        return OPERATION_SUCCESS;
+    }
+
+    /**
+     * Return 50 users closest to a location within 1000 miles.
+     * @param double $latitude
+     * @param double $longitude
+     */
+    public function nearbyUsers($latitude, $longitude) {
+
+        $stmt = $this->conn->prepare("CALL FindNearest(?,?,5,1000,50)");
+        $stmt->bind_param("dd", $latitude, $longitude);
+        if ($stmt->execute()) {
+            $nearby = $stmt->get_result();
+            $stmt->close();
+            return $nearby;
+        } else {
+            $stmt->close();
+            return OPERATION_FAILED;
+        }
+    }
+
     /* --- sp_friends TABLE METHODS --- */
 
     /**
@@ -217,8 +253,8 @@ class DbHandler {
      * @return boolean
      */
     public function friends($initiator, $target) {
-        $stmt = $this->conn->prepare("SELECT friend_shipid FROM SeniorProject.sp_friends WHERE (friend_initiatorid = ? AND friend_initiatorid = ?) OR (friend_initiatorid = ? AND friend_initiatorid = ?)");
-        $stmt->bind_param("iiii", $initiator, $target, $target, $initiator);
+        $stmt = $this->conn->prepare("SELECT friend_shipid FROM SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
+        $stmt->bind_param("ii", $initiator, $target);
         $stmt->execute();
         $stmt->store_result();
         $num_rows = $stmt->num_rows;
@@ -270,25 +306,30 @@ class DbHandler {
 
     /**
      * Get friends of a particular user.
-     * @param int $initiator User_ID from the sp_users table.
+     * @param int $initiator from the sp_users table.
      * @return array Array of user friends.
      */
     public function getFriends($initiator) {
-        $potentialFriends = array();
         $friends = array();
-
-        $stmt = $this->conn->prepare("SELECT friend_targetid FROM SeniorProject.sp_friends WHERE friend_initiatorid = ?");
+        $stmt = $this->conn->prepare("SELECT friend_targetid from SeniorProject.sp_friends WHERE friend_initiatorid = ?");
         $stmt->bind_param("i", $initiator);
         if ($stmt->execute()) {
-            $potentialFriends = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-            foreach ($potentialFriends as $target) {
-                if (friends($initiator, $target)) {
-                    $friends[] = $target;
+            $potential = $stmt->get_result();
+            while ($target = $potential->fetch_assoc()) {
+                $stmt = $this->conn->prepare("SELECT * from SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
+                $stmt->bind_param("ii", $target["friend_targetid"], $initiator);
+                $stmt->execute();
+                $stmt->store_result();
+                if ($stmt->num_rows > 0) {
+                    $friends[] = $target["friend_targetid"];
                 }
             }
+            $stmt->close();
             return $friends;
+        } else {
+            $stmt->close();
+            return OPERATION_FAILED;
         }
-        return OPERATION_FAILED;
     }
 
     /**
@@ -297,21 +338,7 @@ class DbHandler {
      * @return array Array of pending friend requests.
      */
     public function getPendingRequests($initiator) {
-        $potentialPending = array();
-        $pending = array();
-
-        $stmt = $this->conn->prepare("SELECT friend_targetid FROM SeniorProject.sp_friends WHERE friend_initiatorid = ?");
-        $stmt->bind_param("i", $initiator);
-        if ($stmt->execute()) {
-            $potentialPending = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-            foreach ($potentialPending as $target) {
-                if (!friends($initiator, $target)) {
-                    $pending[] = $target;
-                }
-            }
-            return $pending;
-        }
-        return OPERATION_FAILED;
+        
     }
 
     /**
@@ -320,21 +347,7 @@ class DbHandler {
      * @return array Array of pending friend requests.
      */
     public function getFriendRequests($target) {
-        $potentialPending = array();
-        $pending = array();
-
-        $stmt = $this->conn->prepare("SELECT friend_initiatortid FROM SeniorProject.sp_friends WHERE friend_targetrid = ?");
-        $stmt->bind_param("i", $target);
-        if ($stmt->execute()) {
-            $potentialPending = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-            foreach ($potentialPending as $initiator) {
-                if (!friends($initiator, $target)) {
-                    $pending[] = $initiator;
-                }
-            }
-            return $pending;
-        }
-        return OPERATION_FAILED;
+        
     }
 
     /* --- sp_activities TABLE METHODS --- */
