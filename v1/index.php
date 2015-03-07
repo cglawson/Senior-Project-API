@@ -346,10 +346,10 @@ $app->post('/remove_friend', 'authenticate', function() use ($app) {
 
 /**
  * List the friends of a particular user.
- * method POST
+ * method GET
  * url /get_friends
  */
-$app->post('/get_friends', 'authenticate', function() use ($app) {
+$app->get('/get_friends', 'authenticate', function() {
 
     $response = array();
     $response["friends"] = [];
@@ -368,6 +368,81 @@ $app->post('/get_friends', 'authenticate', function() use ($app) {
     // echo json response
     echoRespnse(201, $response);
 });
+
+/**
+ * List the users you have pending friendships with.
+ * method GET
+ * url /get_pending
+ */
+$app->get('/get_pending', 'authenticate', function() {
+    $response = array();
+    $response["friends"] = [];
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->getPendingRequests($user_id);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["friends"] = $res;
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * List the users you have pending friendships with.
+ * method GET
+ * url /get_requests
+ */
+$app->get('/get_requests', 'authenticate', function() {
+    $response = array();
+    $response["friend requests"] = [];
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->getFriendRequests($user_id);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["friend requests"] = $res;
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Boop a user.
+ * method POST
+ * url /boop_user
+ */
+$app->post('/boop_user', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('targetid'));
+
+    $response = array();
+
+    // reading post params
+    $targetID = $app->request->post('targetid');
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->boopUser($user_id, $targetID);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["message"] = "Success!";
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
 
 $app->run();
 ?>

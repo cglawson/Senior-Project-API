@@ -17,14 +17,6 @@ class DbHandler {
         date_default_timezone_set('America/Chicago');
     }
 
-    /**
-     * Get the server time in SQL format.
-     * @return String The time in SQL format.
-     */
-    public function SQLTimestamp() {
-        return date('Y-m-d G:i:s');
-    }
-
     /* --- sp_users TABLE METHODS --- */
 
     /**
@@ -247,22 +239,6 @@ class DbHandler {
     /* --- sp_friends TABLE METHODS --- */
 
     /**
-     * Users are friends if their relationship is symmetrical in the SeniorProject.sp_friends table. 
-     * @param int $initiator User_ID from the sp_users table
-     * @param int $target User_ID from the sp_users table
-     * @return boolean
-     */
-    public function friends($initiator, $target) {
-        $stmt = $this->conn->prepare("SELECT friend_shipid FROM SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
-        $stmt->bind_param("ii", $initiator, $target);
-        $stmt->execute();
-        $stmt->store_result();
-        $num_rows = $stmt->num_rows;
-        $stmt->close();
-        return $num_rows > 1; //If there are two rows, the relationships is symmetrical.
-    }
-
-    /**
      * Add friends entry to database.
      * @param int $initiator User_ID from the sp_users table.
      * @param int $target User_ID from the sp_users table.
@@ -338,7 +314,26 @@ class DbHandler {
      * @return array Array of pending friend requests.
      */
     public function getPendingRequests($initiator) {
-        
+        $pending = array();
+        $stmt = $this->conn->prepare("SELECT friend_targetid from SeniorProject.sp_friends WHERE friend_initiatorid = ?");
+        $stmt->bind_param("i", $initiator);
+        if ($stmt->execute()) {
+            $potential = $stmt->get_result();
+            while ($target = $potential->fetch_assoc()) {
+                $stmt = $this->conn->prepare("SELECT * from SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
+                $stmt->bind_param("ii", $target["friend_targetid"], $initiator);
+                $stmt->execute();
+                $stmt->store_result();
+                if ($stmt->num_rows <= 0) {
+                    $pending[] = $target["friend_targetid"];
+                }
+            }
+            $stmt->close();
+            return $pending;
+        } else {
+            $stmt->close();
+            return OPERATION_FAILED;
+        }
     }
 
     /**
@@ -347,7 +342,26 @@ class DbHandler {
      * @return array Array of pending friend requests.
      */
     public function getFriendRequests($target) {
-        
+        $pending = array();
+        $stmt = $this->conn->prepare("SELECT friend_initiatorid from SeniorProject.sp_friends WHERE friend_targetid = ?");
+        $stmt->bind_param("i", $target);
+        if ($stmt->execute()) {
+            $potential = $stmt->get_result();
+            while ($initiator = $potential->fetch_assoc()) {
+                $stmt = $this->conn->prepare("SELECT * from SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
+                $stmt->bind_param("ii", $target, $initiator["friend_initiatorid"]);
+                $stmt->execute();
+                $stmt->store_result();
+                if ($stmt->num_rows <= 0) {
+                    $pending[] = $initiator["friend_initiatorid"];
+                }
+            }
+            $stmt->close();
+            return $pending;
+        } else {
+            $stmt->close();
+            return OPERATION_FAILED;
+        }
     }
 
     /* --- sp_activities TABLE METHODS --- */
@@ -363,12 +377,21 @@ class DbHandler {
         $stmt->bind_param("ii", $initiator, $target);
 
         if ($stmt->execute()) {
-            $lastBoop = strttotime($stmt->fetchColumn());
+            $result = $stmt->get_result()->fetch_assoc();
 
-            if ($lastBoop < strtotime('-10 minutes')) {
-                return false;
+            if (!is_null($result["activity_timestamp"])) {
+                $now = date_create("now");
+                $lastBoop = date_create($result["activity_timestamp"]);
+                $minutesBetween = date_diff($now, $lastBoop);
+                $cooldown = date_diff(date_create("now"), date_create("-10 minutes"));
+
+                if ((int) $minutesBetween->format("%i") >= (int) $cooldown->format("%i")) {
+                    return false;
+                } else {
+                    return true;
+                }
             } else {
-                return true;
+                return false;
             }
         }
         return OPERATION_FAILED;
@@ -385,37 +408,37 @@ class DbHandler {
         $targetPowerUps = array();
         $value = 1;
 
-        $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
-        $stmt->bind_param("s", $initiator);
-        $stmt->exexute();
-        $initiatorPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-
-        foreach ($initiatorPowerUps as $powerUpID) {
-            switch ($powerUpID) {
-                case 0:
-                    break;
-                case 1:
-                    break;
-                case 2:
-                    break;
-            }
-        }
-
-        $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
-        $stmt->bind_param("s", $target);
-        $stmt->exexute();
-        $targetPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-
-        foreach ($initiatorPowerUps as $powerUpID) {
-            switch ($powerUpID) {
-                case 0:
-                    break;
-                case 1:
-                    break;
-                case 2:
-                    break;
-            }
-        }
+//        $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
+//        $stmt->bind_param("s", $initiator);
+//        $stmt->exexute();
+//        $initiatorPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+//
+//        foreach ($initiatorPowerUps as $powerUpID) {
+//            switch ($powerUpID) {
+//                case 0:
+//                    break;
+//                case 1:
+//                    break;
+//                case 2:
+//                    break;
+//            }
+//        }
+//
+//        $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
+//        $stmt->bind_param("s", $target);
+//        $stmt->exexute();
+//        $targetPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+//
+//        foreach ($initiatorPowerUps as $powerUpID) {
+//            switch ($powerUpID) {
+//                case 0:
+//                    break;
+//                case 1:
+//                    break;
+//                case 2:
+//                    break;
+//            }
+//        }
 
         return $value;
     }
@@ -426,18 +449,18 @@ class DbHandler {
      * @param int $target User_ID of the receiver.
      */
     public function boopUser($initiator, $target) {
-        if (!cooldownActive($initiator, $target)) {
-            $value = boopValue($initiator, $target);
+        if (!$this->cooldownActive($initiator, $target)) {
+            $value = $this->boopValue($initiator, $target);
 
-            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_activities(activity_initiator, activity_target, activity_timestamp) VALUES(?,?,?) WHERE EXISTS( SELECT * FROM SeniorProject.sp_users WHERE user_id = ?)");
-            $stmt->bind_param("iisi", $initiator, $target, getTimestamp(), $target);
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_activities(activity_initiator, activity_target, activity_value, activity_timestamp) VALUES(?,?,?,NOW())");
+            $stmt->bind_param("iii", $initiator, $target, $value);
             if ($stmt->execute()) {
-                $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likessent = user_likessent + ? WHERE user_id = ?");
-                $stmt->bind_param("ii", $initiator, $value);
+                $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_sentscore = user_sentscore + ? WHERE user_id = ?");
+                $stmt->bind_param("ii", $value, $initiator);
                 $stmt->execute();
 
-                $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users user_likesreceived = user_likesreceived + ? WHERE user_id = ?");
-                $stmt->bind_param("ii", $target, $value);
+                $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_receivedscore = user_receivedscore + ? WHERE user_id = ?");
+                $stmt->bind_param("ii", $value, $target);
                 $stmt->execute();
 
                 $stmt->close();
