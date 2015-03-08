@@ -271,6 +271,7 @@ $app->post('/get_nearby', 'authenticate', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('latitude', 'longitude'));
 
+    global $user_id;
     $response = array();
     $response["nearby users"] = [];
 
@@ -279,7 +280,7 @@ $app->post('/get_nearby', 'authenticate', function() use ($app) {
     $longitude = $app->request->post('longitude');
 
     $db = new DbHandler();
-    $res = $db->nearbyUsers($latitude, $longitude);
+    $res = $db->nearbyUsers($latitude, $longitude, $user_id);
 
     if ($res == OPERATION_FAILED) {
         $response["message"] = "Fail!";

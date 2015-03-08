@@ -242,10 +242,11 @@ class DbHandler {
      * @param double $latitude
      * @param double $longitude
      */
-    public function nearbyUsers($latitude, $longitude) {
+    public function nearbyUsers($latitude, $longitude, $user_id) {
+        $condition = "NOT user_location_id = " . $user_id;
 
-        $stmt = $this->conn->prepare("CALL FindNearest(?,?,5,1000,50)");
-        $stmt->bind_param("dd", $latitude, $longitude);
+        $stmt = $this->conn->prepare("CALL FindNearest(?,?,5,1000,50,?)");
+        $stmt->bind_param("dds", $latitude, $longitude, $condition);
         if ($stmt->execute()) {
             $nearby = $stmt->get_result();
             $stmt->close();
