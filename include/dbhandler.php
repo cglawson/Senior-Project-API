@@ -22,17 +22,17 @@ class DbHandler {
     /**
      * Creating new user.
      * @param String $username Display name of user.
-     * @param String $androidID ID of android user.
+     * @param String $uniqueID ID of android user.
      * @param String $phoneNumber Phone number of user if applicable.
      * @return String 
      */
-    public function createUser($username, $androidID) {
+    public function createUser($username, $uniqueID) {
 
         //Is the username taken?
         if (!$this->userExists($username)) {
 
             //Generate an API key for server-client interactions.
-            $apiKey = $this->generateApiKey($username, $androidID);
+            $apiKey = $this->generateApiKey($username, $uniqueID);
 
             //Insert upon success.
             $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_users(user_name, user_name_timestamp, user_apikey, user_sentscore, user_receivedscore)VALUES(?,NOW(),?,0,0)");
@@ -100,28 +100,28 @@ class DbHandler {
     /**
      * Generating unique key for server-client interactions.
      * @param String $username Usernames are guaranteed to be unique.
-     * @param String $androidID ANDROID_ID is usually unique.
+     * @param String $uniqueID ANDROID_ID is usually unique.
      */
-    private function generateApiKey($username, $androidID) {
-        return password_hash($username . $androidID, PASSWORD_DEFAULT);
+    private function generateApiKey($username, $uniqueID) {
+        return password_hash($username . $uniqueID, PASSWORD_DEFAULT);
     }
 
     /**
-     * If the username + androidID hash matches up with what's in the DB,
+     * If the username + uniqueID hash matches up with what's in the DB,
      * update the key and return the API key to the user.
      * @param String $username 
-     * @param String $androidID
+     * @param String $uniqueID
      * @return String
      */
-    public function updateApiKey($username, $androidID) {
+    public function updateApiKey($username, $uniqueID) {
         $stmt = $this->conn->prepare("SELECT user_apikey FROM SeniorProject.sp_users WHERE user_name = ?");
         $stmt->bind_param("s", $username);
         if ($stmt->execute()) {
             $apiKey = $stmt->get_result()->fetch_assoc();
             $stmt->close();
 
-            if (password_verify($username . $androidID, $apiKey["user_apikey"])) {
-                $apiKey = $this->generateApiKey($username, $androidID); //Generate a new API Key
+            if (password_verify($username . $uniqueID, $apiKey["user_apikey"])) {
+                $apiKey = $this->generateApiKey($username, $uniqueID); //Generate a new API Key
                 $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_apikey = ? WHERE user_name = ?");
                 $stmt->bind_param("ss", $apiKey, $username);
                 if ($stmt->execute()) {
@@ -143,39 +143,59 @@ class DbHandler {
      * Updates the user's name.  This can occur only every fourteen days.
      * @param int $userID
      * @param int $newUsername
+     * @param String $uniqueID
      * @return int Days until username can be updated again.
      */
-    public function updateUsername($userID, $newUsername) {
+    public function updateUsername($userID, $newUsername, $uniqueID) {
+        $res = array();
+
         $userID_copy = $userID;
-        $stmt = $this->conn->prepare("SELECT user_name_timestamp FROM SeniorProject.sp_users WHERE user_id = ?");
+        $uniqueID_copy = $uniqueID;
+
+        $stmt = $this->conn->prepare("SELECT user_name, user_name_timestamp, user_apikey FROM SeniorProject.sp_users WHERE user_id = ?");
         $stmt->bind_param("i", $userID);
+        $stmt->execute();
 
-        if ($stmt->execute()) {
-            $result = $stmt->get_result()->fetch_assoc();
+        $result = $stmt->get_result()->fetch_assoc();
 
+        if (password_verify($result["user_name"] . $uniqueID, $result["user_apikey"])) {
             $lastUpdated = date_create($result["user_name_timestamp"]);
             $now = date_create("now");
             $daysBetween = date_diff($now, $lastUpdated);
 
-            if ($daysBetween->format("%d") >= 14) {
+            if ($daysBetween->days >= 14) {
                 if (!$this->userExists($newUsername)) {
-                    $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_name = ?, user_name_timestamp = NOW() WHERE user_id = ?");
-                    $stmt->bind_param("si", $newUsername, $userID_copy);
-                    if ($stmt->execute()) {
-                        $stmt->close();
-                        return OPERATION_SUCCESS;
-                    } else {
-                        $stmt->close();
-                        return OPERATION_FAILED;
-                    }
+                    $newApiKey = $this->generateApiKey($newUsername, $uniqueID);
+
+                    $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_name = ?, user_name_timestamp = NOW(), user_apikey = ? WHERE user_id = ?");
+                    $stmt->bind_param("ssi", $newUsername, $newApiKey, $userID_copy);
+                    $stmt->execute();
+                    $stmt->close();
+
+                    $res["status"] = OPERATION_SUCCESS;
+                    $res["newUsername"] = $newUsername;
+                    $res["newApiKey"] = $newApiKey;
+
+                    return $res;
                 } else {
-                    return ALREADY_EXISTS;
+                    $stmt->close();
+                    $res["status"] = ALREADY_EXISTS;
+
+                    return $res;
                 }
             } else {
-                return 14 - $daysBetween->format("%d");  // Days remaining.
+                $stmt->close();
+                $res["status"] = TIME_CONSTRAINT;
+                $res["days_remaining"] = 14 - $daysBetween->days;
+                
+                return $res;
             }
+        } else {
+            $stmt->close();
+            $res["status"] = INVALID_CREDENTIALS;
+            
+            return $res;
         }
-        return OPERATION_FAILED;
     }
 
     /* --- sp_user_locations TABLE METHODS --- */
@@ -382,10 +402,14 @@ class DbHandler {
             if (!is_null($result["activity_timestamp"])) {
                 $now = date_create("now");
                 $lastBoop = date_create($result["activity_timestamp"]);
-                $minutesBetween = date_diff($now, $lastBoop);
-                $cooldown = date_diff(date_create("now"), date_create("-10 minutes"));
 
-                if ((int) $minutesBetween->format("%i") >= (int) $cooldown->format("%i")) {
+                $minutesBetween_DI = date_diff($now, $lastBoop);
+                $cooldown_DI = date_diff(date_create("now"), date_create("-10 minutes"));
+
+                $minutesBetween = $minutesBetween_DI->i + $minutesBetween_DI->h * 60 + $minutesBetween_DI->d * 1440 + $minutesBetween_DI->m * 43800 + $minutesBetween_DI->y * 525600;
+                $cooldown = $cooldown_DI->i + $cooldown_DI->h * 60 + $cooldown_DI->d * 1440 + $cooldown_DI->m * 43800 + $cooldown_DI->y * 525600;
+
+                if ($minutesBetween > $cooldown) {
                     return false;
                 } else {
                     return true;

@@ -109,20 +109,20 @@ function authenticate(\Slim\Route $route) {
  * User Registration
  * url - /register
  * method - POST
- * params - username, androidID
+ * params - username, uniqueID
  */
 $app->post('/register', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('username', 'androidID'));
+    verifyRequiredParams(array('username', 'uniqueID'));
 
     $response = array();
 
     // reading post params
     $username = strtolower($app->request->post('username'));
-    $androidID = $app->request->post('androidID');
+    $uniqueID = $app->request->post('uniqueID');
 
     $db = new DbHandler();
-    $res = $db->createUser($username, $androidID);
+    $res = $db->createUser($username, $uniqueID);
 
     if ($res == OPERATION_FAILED) {
         $response["message"] = "An exception has occured!";
@@ -140,20 +140,20 @@ $app->post('/register', function() use ($app) {
  * Refresh API Key
  * url - /update_key
  * method - POST
- * params - username, androidID
+ * params - username, uniqueID
  */
 $app->post('/update_key', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('username', 'androidID'));
+    verifyRequiredParams(array('username', 'uniqueID'));
 
     $response = array();
 
     // reading post params
     $username = strtolower($app->request->post('username'));
-    $androidID = $app->request->post('androidID');
+    $uniqueID = $app->request->post('uniqueID');
 
     $db = new DbHandler();
-    $res = $db->updateApiKey($username, $androidID);
+    $res = $db->updateApiKey($username, $uniqueID);
 
     if ($res == OPERATION_FAILED) {
         $response["message"] = "An exception has occured!";
@@ -175,28 +175,37 @@ $app->post('/update_key', function() use ($app) {
  */
 $app->post('/update_username', 'authenticate', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('newUsername'));
+    verifyRequiredParams(array('newUsername', 'uniqueID'));
 
     $response = array();
 
     // reading post params
     $newUsername = strtolower($app->request->post('newUsername'));
+    $uniqueID = $app->request->post('uniqueID');
 
     global $user_id;
     $db = new DbHandler();
-    $res = $db->updateUsername($user_id, $newUsername);
+    $res = $db->updateUsername($user_id, $newUsername, $uniqueID);
 
-    if ($res == OPERATION_SUCCESS) {
-        $response["message"] = "Successfully updated.";
-        $response["username"] = $newUsername;
-    } else if ($res == OPERATION_FAILED) {
-        $response["message"] = "An exception has occured!";
-    } else if ($res == ALREADY_EXISTS) {
-        $response["message"] = "Username already claimed.";
+    if ($res["status"] == OPERATION_SUCCESS) {
+        $response["status"] = OPERATION_SUCCESS;
+        $response["message"] = "Successfully updated username.";
+        $response["newUsername"] = $res["newUsername"];
+        $response["newApiKey"] = $res["newApiKey"];
+    } else if ($res["status"] == TIME_CONSTRAINT) {
+        $response["status"] = TIME_CONSTRAINT;
+        $response["message"] = "A username can only be changed every 14 days";
+        $response["days_remaining"] = $res["days_remaining"];
+    } else if ($res["status"] == ALREADY_EXISTS) {
+        $response["status"] = ALREADY_EXISTS;
+        $response["message"] = "Another user already has this name.";
+    } else if ($res["status"] == INVALID_CREDENTIALS) {
+        $response["status"] = INVALID_CREDENTIALS;
+        $response["message"] = "One of your credentials is invalid.";
     } else {
-        $response["message"] = "A username can only be updated every 14 days.";
-        $response["days_remaining"] = $res;
+        $response["message"] = "Unexpected Result.";
     }
+
     // echo json response
     echoRespnse(201, $response);
 });

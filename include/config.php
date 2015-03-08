@@ -13,4 +13,6 @@ define('DB_NAME', 'SeniorProject');
 define('OPERATION_FAILED', 'fail');
 define('OPERATION_SUCCESS', 'success');
 define('ALREADY_EXISTS', 'exists');
+define('TIME_CONSTRAINT', 'time');
+define('INVALID_CREDENTIALS', 'credentials');
 ?>
