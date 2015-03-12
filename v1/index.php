@@ -371,10 +371,18 @@ $app->get('/get_friends', 'authenticate', function() {
     if ($res == OPERATION_FAILED) {
         $response["message"] = "Fail!";
     } else {
-        $response["friends"] = $res;
+        $response["message"] = "Success!";
+        
+        while ($friend = $res->fetch_assoc()) {
+            $tmp = array();
+            $tmp["user_id"] = $friend["user_id"];
+            $tmp["user_name"] = $friend["user_name"];
+            $tmp["user_receivedscore"] = $friend["user_receivedscore"];
+            $tmp["user_sentscore"] = $friend["user_sentscore"];
+
+            array_push($response["friends"], $tmp);
+        }
     }
-
-
     // echo json response
     echoRespnse(201, $response);
 });
@@ -386,7 +394,7 @@ $app->get('/get_friends', 'authenticate', function() {
  */
 $app->get('/get_pending', 'authenticate', function() {
     $response = array();
-    $response["friends"] = [];
+    $response["pending"] = [];
 
     global $user_id;
     $db = new DbHandler();
@@ -395,9 +403,18 @@ $app->get('/get_pending', 'authenticate', function() {
     if ($res == OPERATION_FAILED) {
         $response["message"] = "Fail!";
     } else {
-        $response["friends"] = $res;
-    }
+        $response["message"] = "Success!";
+        
+        while ($pend = $res->fetch_assoc()) {
+            $tmp = array();
+            $tmp["user_id"] = $pend["user_id"];
+            $tmp["user_name"] = $pend["user_name"];
+            $tmp["user_receivedscore"] = $pend["user_receivedscore"];
+            $tmp["user_sentscore"] = $pend["user_sentscore"];
 
+            array_push($response["pending"], $tmp);
+        }
+    }
     // echo json response
     echoRespnse(201, $response);
 });
@@ -453,6 +470,99 @@ $app->post('/boop_user', 'authenticate', function() use ($app) {
     echoRespnse(201, $response);
 });
 
+/**
+ * Debug function for adding inventory.
+ * method POST
+ * url /add_inventory
+ */
+$app->post('/add_inventory', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('elixirID', 'quantity'));
+
+    $response = array();
+
+    // reading post params
+    $elixirID = $app->request->post('elixirID');
+    $quantity = $app->request->post('quantity');
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->addInventoryItem($user_id, $elixirID, $quantity);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["message"] = "Success!";
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Decrement inventory item.
+ * method POST
+ * url /decrement_inventory
+ */
+$app->post('/decrement_inventory', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('elixirID'));
+
+    $response = array();
+
+    // reading post params
+    $elixirID = abs($app->request->post('elixirID'));
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->decrementInventory($user_id, $elixirID);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["message"] = "Success!";
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * List the inventory of a particular user.
+ * method GET
+ * url /get_inventory
+ */
+$app->get('/get_inventory', 'authenticate', function() {
+
+    $response = array();
+    $response["inventory"] = [];
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->getInventory($user_id);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else {
+        $response["message"] = "Success!";
+
+        while ($inv = $res->fetch_assoc()) {
+            $tmp = array();
+            $tmp["elixir_id"] = $inv["elixir_id"];
+            $tmp["elixir_type"] = $inv["elixir_type"];
+            $tmp["elixir_name"] = $inv["elixir_name"];
+            $tmp["elixir_desc"] = $inv["elixir_desc"];
+            $tmp["inventory_quantity"] = $inv["inventory_quantity"];
+            $tmp["inventory_active"] = $inv["inventory_active"];
+
+            array_push($response["inventory"], $tmp);
+        }
+    }
+
+
+    // echo json response
+    echoRespnse(201, $response);
+});
 
 $app->run();
 ?>

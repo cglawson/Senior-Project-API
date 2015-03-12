@@ -187,13 +187,13 @@ class DbHandler {
                 $stmt->close();
                 $res["status"] = TIME_CONSTRAINT;
                 $res["days_remaining"] = 14 - $daysBetween->days;
-                
+
                 return $res;
             }
         } else {
             $stmt->close();
             $res["status"] = INVALID_CREDENTIALS;
-            
+
             return $res;
         }
     }
@@ -307,26 +307,19 @@ class DbHandler {
      * @return array Array of user friends.
      */
     public function getFriends($initiator) {
-        $friends = array();
-        $stmt = $this->conn->prepare("SELECT friend_targetid from SeniorProject.sp_friends WHERE friend_initiatorid = ?");
-        $stmt->bind_param("i", $initiator);
-        if ($stmt->execute()) {
-            $potential = $stmt->get_result();
-            while ($target = $potential->fetch_assoc()) {
-                $stmt = $this->conn->prepare("SELECT * from SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
-                $stmt->bind_param("ii", $target["friend_targetid"], $initiator);
-                $stmt->execute();
-                $stmt->store_result();
-                if ($stmt->num_rows > 0) {
-                    $friends[] = $target["friend_targetid"];
-                }
-            }
-            $stmt->close();
-            return $friends;
-        } else {
-            $stmt->close();
-            return OPERATION_FAILED;
-        }
+        $stmt = $this->conn->prepare("SELECT u.user_id, u.user_name, u.user_receivedscore, u.user_sentscore
+                                      FROM SeniorProject.sp_friends f, SeniorProject.sp_users u
+                                      WHERE f.friend_targetid = u.user_id AND f.friend_initiatorid = ? AND EXISTS
+                                        (SELECT * 
+                                        FROM SeniorProject.sp_friends
+                                        WHERE friend_targetid = ?)
+                                        ORDER BY u.user_name ASC");
+        $stmt->bind_param("ii", $initiator, $initiator);
+        $stmt->execute();
+
+        $friends = $stmt->get_result();
+        $stmt->close();
+        return $friends;
     }
 
     /**
@@ -335,26 +328,19 @@ class DbHandler {
      * @return array Array of pending friend requests.
      */
     public function getPendingRequests($initiator) {
-        $pending = array();
-        $stmt = $this->conn->prepare("SELECT friend_targetid from SeniorProject.sp_friends WHERE friend_initiatorid = ?");
-        $stmt->bind_param("i", $initiator);
-        if ($stmt->execute()) {
-            $potential = $stmt->get_result();
-            while ($target = $potential->fetch_assoc()) {
-                $stmt = $this->conn->prepare("SELECT * from SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
-                $stmt->bind_param("ii", $target["friend_targetid"], $initiator);
-                $stmt->execute();
-                $stmt->store_result();
-                if ($stmt->num_rows <= 0) {
-                    $pending[] = $target["friend_targetid"];
-                }
-            }
-            $stmt->close();
-            return $pending;
-        } else {
-            $stmt->close();
-            return OPERATION_FAILED;
-        }
+        $stmt = $this->conn->prepare("SELECT u.user_id, u.user_name, u.user_receivedscore, u.user_sentscore
+                                      FROM SeniorProject.sp_friends f, SeniorProject.sp_users u
+                                      WHERE f.friend_targetid = u.user_id AND f.friend_initiatorid = ? AND f.friend_targetid NOT IN
+                                        (SELECT friend_initiatorid 
+                                        FROM SeniorProject.sp_friends
+                                        WHERE friend_targetid = ?)
+                                      ORDER BY u.user_name ASC");
+        $stmt->bind_param("ii", $initiator, $initiator);
+        $stmt->execute();
+
+        $pending = $stmt->get_result();
+        $stmt->close();
+        return $pending;
     }
 
     /**
@@ -408,7 +394,7 @@ class DbHandler {
                 $cooldown_DI = date_diff(date_create("now"), date_create("-10 minutes"));
 
                 $minutesBetween = $minutesBetween_DI->i + $minutesBetween_DI->h * 60 + $minutesBetween_DI->d * 1440 + $minutesBetween_DI->m * 43800 + $minutesBetween_DI->y * 525600;
-                $cooldown = $cooldown_DI->i + $cooldown_DI->h * 60 + $cooldown_DI->d * 1440 + $cooldown_DI->m * 43800 + $cooldown_DI->y * 525600;
+                $cooldown = $cooldown_DI->i;
 
                 if ($minutesBetween > $cooldown) {
                     return false;
@@ -496,6 +482,90 @@ class DbHandler {
         } else {
             return OPERATION_FAILED;
         }
+    }
+
+    /* --- sp_user_inventories TABLE METHODS --- */
+
+    /**
+     * Add x number of inventory item to a user's inventory.
+     * @param int $userID
+     * @param int $elixirID
+     * @param int $quantity
+     */
+    public function addInventoryItem($userID, $elixirID, $quantity) {
+        $stmt = $this->conn->prepare("SELECT * FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_elixir_id = ?");
+        $stmt->bind_param("ii", $userID, $elixirID);
+        $stmt->execute();
+        $stmt->store_result();
+
+        if ($stmt->num_rows <= 0) { //Insert new row.
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_user_inventories(inventory_user_id, inventory_elixir_id, inventory_quantity) VALUES(?,?,?)");
+            $stmt->bind_param("iii", $userID, $elixirID, $quantity);
+            if ($stmt->execute()) {
+                $stmt->close();
+                return OPERATION_SUCCESS;
+            } else {
+                $stmt->close();
+                return OPERATION_FAILED;
+            }
+        } else { //Update row.
+            $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_user_inventories SET inventory_quantity = inventory_quantity + ? WHERE inventory_user_id = ? AND inventory_elixir_id = ?");
+            $stmt->bind_param("iii", $quantity, $userID, $elixirID);
+            if ($stmt->execute()) {
+                $stmt->close();
+                return OPERATION_SUCCESS;
+            } else {
+                $stmt->close();
+                return OPERATION_FAILED;
+            }
+        }
+    }
+
+    /**
+     * Decrement inventory item.
+     * @param int $userID
+     * @param int $elixirID
+     */
+    public function decrementInventory($userID, $elixirID) {
+        $stmt = $this->conn->prepare("SELECT inventory_quantity FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_elixir_id = ?");
+        $stmt->bind_param("ii", $userID, $elixirID);
+        $stmt->execute();
+        $res = $stmt->get_result()->fetch_assoc();
+
+        if ($res["inventory_quantity"] <= 1) { //I would rather have no entry than an empty one.  Personal preference.
+            $stmt = $this->conn->prepare("DELETE IGNORE FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_elixir_id = ?");
+            $stmt->bind_param("ii", $userID, $elixirID);
+            $stmt->execute();
+            $stmt->close();
+
+            return OPERATION_SUCCESS;
+        } else {
+            $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_user_inventories SET inventory_quantity = inventory_quantity - 1 WHERE inventory_user_id = ? AND inventory_elixir_id = ?");
+            $stmt->bind_param("ii", $userID, $elixirID);
+            if ($stmt->execute()) {
+                $stmt->close();
+                return OPERATION_SUCCESS;
+            } else {
+                $stmt->close();
+                return OPERATION_FAILED;
+            }
+        }
+    }
+
+    /**
+     * Get the inventory of a particular user.
+     * @param $userID
+     */
+    public function getInventory($userID) {
+        $stmt = $this->conn->prepare("SELECT eli.elixir_id, eli.elixir_type, eli.elixir_name, eli.elixir_desc, inv.inventory_quantity, inv.inventory_active
+                                      FROM SeniorProject.sp_elixirs eli, SeniorProject.sp_user_inventories inv  
+                                      WHERE inv.inventory_elixir_id = eli.elixir_id AND inv.inventory_user_id = ?
+                                      ORDER BY eli.elixir_id ASC");
+        $stmt->bind_param("i", $userID);
+        $stmt->execute();
+        $inventory = $stmt->get_result();
+        $stmt->close();
+        return $inventory;
     }
 
 }
