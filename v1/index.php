@@ -289,7 +289,10 @@ $app->post('/get_nearby', 'authenticate', function() use ($app) {
 
         while ($user = $res->fetch_assoc()) {
             $tmp = array();
-            $tmp["user_location_id"] = $user["user_location_id"];
+            $tmp["user_id"] = $user["user_id"];
+            $tmp["user_name"] = $user["user_name"];
+            $tmp["user_receivedscore"] = $user["user_receivedscore"];
+            $tmp["user_sentscore"] = $user["user_sentscore"];
             array_push($response["nearby users"], $tmp);
         }
     }
@@ -318,6 +321,36 @@ $app->post('/add_friend', 'authenticate', function() use ($app) {
 
     if ($res == OPERATION_FAILED) {
         $response["message"] = "Fail!";
+    } else {
+        $response["message"] = "Success!";
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Request a user's friendship by username.
+ * method POST
+ * url /add_friend_by_username
+ */
+$app->post('/add_friend_by_username', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('username'));
+
+    $response = array();
+
+    // reading post params
+    $username = $app->request->post('username');
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->addFriendByUsername($user_id, $username);
+
+    if ($res == OPERATION_FAILED) {
+        $response["message"] = "Fail!";
+    } else if ($res == DOES_NOT_EXIST) {
+        $response["message"] = "Does not exist!";
     } else {
         $response["message"] = "Success!";
     }
@@ -372,7 +405,7 @@ $app->get('/get_friends', 'authenticate', function() {
         $response["message"] = "Fail!";
     } else {
         $response["message"] = "Success!";
-        
+
         while ($friend = $res->fetch_assoc()) {
             $tmp = array();
             $tmp["user_id"] = $friend["user_id"];
@@ -404,7 +437,7 @@ $app->get('/get_pending', 'authenticate', function() {
         $response["message"] = "Fail!";
     } else {
         $response["message"] = "Success!";
-        
+
         while ($pend = $res->fetch_assoc()) {
             $tmp = array();
             $tmp["user_id"] = $pend["user_id"];
@@ -426,7 +459,7 @@ $app->get('/get_pending', 'authenticate', function() {
  */
 $app->get('/get_requests', 'authenticate', function() {
     $response = array();
-    $response["friend requests"] = [];
+    $response["requests"] = [];
 
     global $user_id;
     $db = new DbHandler();
@@ -435,9 +468,18 @@ $app->get('/get_requests', 'authenticate', function() {
     if ($res == OPERATION_FAILED) {
         $response["message"] = "Fail!";
     } else {
-        $response["friend requests"] = $res;
-    }
+        $response["message"] = "Success!";
 
+        while ($requ = $res->fetch_assoc()) {
+            $tmp = array();
+            $tmp["user_id"] = $requ["user_id"];
+            $tmp["user_name"] = $requ["user_name"];
+            $tmp["user_receivedscore"] = $requ["user_receivedscore"];
+            $tmp["user_sentscore"] = $requ["user_sentscore"];
+
+            array_push($response["requests"], $tmp);
+        }
+    }
     // echo json response
     echoRespnse(201, $response);
 });
@@ -460,69 +502,19 @@ $app->post('/boop_user', 'authenticate', function() use ($app) {
     $db = new DbHandler();
     $res = $db->boopUser($user_id, $targetID);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
+    if ($res["status"] == TIME_CONSTRAINT) {
+        $response["status"] = TIME_CONSTRAINT;
+    } else if ($res["status"] == OPERATION_FAILED) {
+        $response["status"] = OPERATION_FAILED;
     } else {
-        $response["message"] = "Success!";
+        $response["status"] = OPERATION_SUCCESS;
+        $response["timestamp"] = $res["timestamp"];
+        $response["initiator boop value"] = $res["initiator boop value"];
+        $response["target boop value"] = $res["target boop value"];
+        $response["initiator elixirs used"] = $res["initiator elixirs used"];
+        $response["target elixirs used"] = $res["target elixirs used"];
+        $response["elixir rewards"] = $res["reward"];
     }
-
-    // echo json response
-    echoRespnse(201, $response);
-});
-
-/**
- * Debug function for adding inventory.
- * method POST
- * url /add_inventory
- */
-$app->post('/add_inventory', 'authenticate', function() use ($app) {
-    // check for required params
-    verifyRequiredParams(array('elixirID', 'quantity'));
-
-    $response = array();
-
-    // reading post params
-    $elixirID = $app->request->post('elixirID');
-    $quantity = $app->request->post('quantity');
-
-    global $user_id;
-    $db = new DbHandler();
-    $res = $db->addInventoryItem($user_id, $elixirID, $quantity);
-
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else {
-        $response["message"] = "Success!";
-    }
-
-    // echo json response
-    echoRespnse(201, $response);
-});
-
-/**
- * Decrement inventory item.
- * method POST
- * url /decrement_inventory
- */
-$app->post('/decrement_inventory', 'authenticate', function() use ($app) {
-    // check for required params
-    verifyRequiredParams(array('elixirID'));
-
-    $response = array();
-
-    // reading post params
-    $elixirID = abs($app->request->post('elixirID'));
-
-    global $user_id;
-    $db = new DbHandler();
-    $res = $db->decrementInventory($user_id, $elixirID);
-
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else {
-        $response["message"] = "Success!";
-    }
-
     // echo json response
     echoRespnse(201, $response);
 });
@@ -564,5 +556,112 @@ $app->get('/get_inventory', 'authenticate', function() {
     echoRespnse(201, $response);
 });
 
+$app->post('/inventory_set_active', 'authenticate', function() use ($app) {
+    // check for required params
+    verifyRequiredParams(array('elixirid', 'active'));
+
+    $response = array();
+
+    // reading post params
+    $elixirID = $app->request->post('elixirid');
+    $active = $app->request->post('active');
+
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->setInventoryActive($user_id, $elixirID, $active);
+
+    if ($res["status"] == OPERATION_FAILED) {
+        $response["status"] = OPERATION_FAILED;
+    } else {
+        $response["status"] = OPERATION_SUCCESS;
+    }
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * List the top 20 users based on sentscore.
+ * method GET
+ * url /get_top_senders
+ */
+$app->get('/get_top_senders', 'authenticate', function() {
+
+    $response = array();
+    $response["top senders"] = array();
+
+    $db = new DbHandler();
+    $res = $db->globalTopSenders(20);
+
+    if ($res["status"] == OPERATION_SUCCESS) {
+        $response["status"] = OPERATION_SUCCESS;
+        
+        while($player = $res["top senders"]->fetch_assoc()){
+            $tmp = array();
+            $tmp["user_name"] = $player["user_name"];
+            $tmp["user_sentscore"] = $player["user_sentscore"];
+            $tmp["user_receivedscore"] = $player["user_receivedscore"];
+            
+            array_push($response["top senders"], $tmp);
+        }
+    } else {
+        $response["status"] = OPERATION_FAILED;
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * List the top 20 users based on receivedscore.
+ * method GET
+ * url /get_top_receivers
+ */
+$app->get('/get_top_receivers', 'authenticate', function() {
+
+    $response = array();
+    $response["top receivers"] = array();
+
+    $db = new DbHandler();
+    $res = $db->globalTopReceivers(20);
+
+    if ($res["status"] == OPERATION_SUCCESS) {
+        $response["status"] = OPERATION_SUCCESS;
+        
+        while($player = $res["top receivers"]->fetch_assoc()){
+            $tmp = array();
+            $tmp["user_name"] = $player["user_name"];
+            $tmp["user_sentscore"] = $player["user_sentscore"];
+            $tmp["user_receivedscore"] = $player["user_receivedscore"];
+            
+            array_push($response["top receivers"], $tmp);
+        }
+    } else {
+        $response["status"] = OPERATION_FAILED;
+    }
+
+    // echo json response
+    echoRespnse(201, $response);
+});
+
+/**
+ * Get boops sent to you since last check.
+ * method GET
+ * url /get_boops_since_checked
+ */
+$app->get('/get_boops_since_checked', 'authenticate', function() {
+
+    $response = array();
+    $response["top receivers"] = array();
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->getBoopsSinceChecked($user_id);
+
+    $response = $res;
+
+    // echo json response
+    echoRespnse(201, $response);
+});
 $app->run();
 ?>

@@ -11,6 +11,7 @@ class DbHandler {
 
     function __construct() {
         require_once dirname(__FILE__) . '/dbconnect.php';
+        require_once dirname(__FILE__) . '/elixirhandler.php';
         // opening db connection
         $db = new DbConnect();
         $this->conn = $db->connect();
@@ -72,6 +73,22 @@ class DbHandler {
     public function getUserId($api_key) {
         $stmt = $this->conn->prepare("SELECT user_id FROM SeniorProject.sp_users WHERE user_apikey = ?");
         $stmt->bind_param("s", $api_key);
+        if ($stmt->execute()) {
+            $user_id = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            return $user_id["user_id"];
+        } else {
+            return NULL;
+        }
+    }
+
+    /**
+     * Fetching user ID by username.
+     * @param String $username
+     */
+    public function getUserId_username($username) {
+        $stmt = $this->conn->prepare("SELECT user_id FROM SeniorProject.sp_users WHERE user_name = ?");
+        $stmt->bind_param("s", $username);
         if ($stmt->execute()) {
             $user_id = $stmt->get_result()->fetch_assoc();
             $stmt->close();
@@ -287,6 +304,23 @@ class DbHandler {
     }
 
     /**
+     * Add friends entry to the database by name.
+     * @param type $initiator
+     * @param type $username
+     */
+    public function addFriendByUsername($initiator, $username) {
+        $target = $this->getUserId_username($username);
+
+        if (!is_null($target)) {
+            $res = $this->addFriend($initiator, $target);
+        } else {
+            $res = DOES_NOT_EXIST;
+        }
+
+        return $res;
+    }
+
+    /**
      * Remove friends entry from database.
      * @param int $initiator User_ID from the sp_users table.
      * @param int $target User_ID from the sp_users table.
@@ -349,26 +383,19 @@ class DbHandler {
      * @return array Array of pending friend requests.
      */
     public function getFriendRequests($target) {
-        $pending = array();
-        $stmt = $this->conn->prepare("SELECT friend_initiatorid from SeniorProject.sp_friends WHERE friend_targetid = ?");
-        $stmt->bind_param("i", $target);
-        if ($stmt->execute()) {
-            $potential = $stmt->get_result();
-            while ($initiator = $potential->fetch_assoc()) {
-                $stmt = $this->conn->prepare("SELECT * from SeniorProject.sp_friends WHERE friend_initiatorid = ? AND friend_targetid = ?");
-                $stmt->bind_param("ii", $target, $initiator["friend_initiatorid"]);
-                $stmt->execute();
-                $stmt->store_result();
-                if ($stmt->num_rows <= 0) {
-                    $pending[] = $initiator["friend_initiatorid"];
-                }
-            }
-            $stmt->close();
-            return $pending;
-        } else {
-            $stmt->close();
-            return OPERATION_FAILED;
-        }
+        $stmt = $this->conn->prepare("SELECT u.user_id, u.user_name, u.user_receivedscore, u.user_sentscore
+                                      FROM SeniorProject.sp_friends f, SeniorProject.sp_users u
+                                      WHERE f.friend_initiatorid = u.user_id AND f.friend_targetid = ? AND f.friend_initiatorid NOT IN
+                                        (SELECT friend_targetid 
+                                        FROM SeniorProject.sp_friends
+                                        WHERE friend_initiatorid = ?)
+                                      ORDER BY u.user_name ASC");
+        $stmt->bind_param("ii", $target, $target);
+        $stmt->execute();
+
+        $requests = $stmt->get_result();
+        $stmt->close();
+        return $requests;
     }
 
     /* --- sp_activities TABLE METHODS --- */
@@ -380,7 +407,7 @@ class DbHandler {
      * @return boolean
      */
     public function cooldownActive($initiator, $target) {
-        $stmt = $this->conn->prepare("SELECT activity_timestamp FROM SeniorProject.sp_activities WHERE activity_initiator = ? AND activity_target = ? ORDER BY activity_id DESC LIMIT 1");
+        $stmt = $this->conn->prepare("SELECT activity_timestamp FROM SeniorProject.sp_activities WHERE activity_initiator = ? AND activity_target = ? ORDER BY activity_timestamp DESC LIMIT 1");
         $stmt->bind_param("ii", $initiator, $target);
 
         if ($stmt->execute()) {
@@ -412,46 +439,287 @@ class DbHandler {
      * Determine the value of a particular Boop.
      * @param int $initiator User_ID of the sender.
      * @param int $target User_ID of the receiver.
-     * @return int
+     * @return array
      */
     public function boopValue($initiator, $target) {
-        $initiatorPowerUps = array();
-        $targetPowerUps = array();
-        $value = 1;
+        $targetCopy = $target;
+        $initiatorCopy = $initiator;
 
-//        $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
-//        $stmt->bind_param("s", $initiator);
-//        $stmt->exexute();
-//        $initiatorPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-//
-//        foreach ($initiatorPowerUps as $powerUpID) {
-//            switch ($powerUpID) {
-//                case 0:
-//                    break;
-//                case 1:
-//                    break;
-//                case 2:
-//                    break;
-//            }
-//        }
-//
-//        $stmt = $this->conn->prepare("SELECT inventory_elixir_id FROM SeniorProject.sp_user_inventories WHERE inventory_user_id = ? AND inventory_active = 'true'");
-//        $stmt->bind_param("s", $target);
-//        $stmt->exexute();
-//        $targetPowerUps = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
-//
-//        foreach ($initiatorPowerUps as $powerUpID) {
-//            switch ($powerUpID) {
-//                case 0:
-//                    break;
-//                case 1:
-//                    break;
-//                case 2:
-//                    break;
-//            }
-//        }
+        $tmp = array();
 
-        return $value;
+        $res = array();
+        $res["initiatorBoopValue"] = 1;
+        $res["targetBoopValue"] = 1;
+        $res["initiatorElixirsUsed"] = array();
+        $res["ieuHumanReadable"] = array();
+        $res["targetElixirsUsed"] = array();
+        $res["teuHumanReadable"] = array();
+
+        //Get the scores for score calculation.
+        $stmt = $this->conn->prepare("SELECT user_sentscore FROM SeniorProject.sp_users WHERE user_id = ?");
+        $stmt->bind_param("i", $initiator);
+        $stmt->execute();
+        $initiatorSS = $stmt->get_result()->fetch_assoc();
+
+        $stmt = $this->conn->prepare("SELECT user_receivedscore FROM SeniorProject.sp_users WHERE user_id = ?");
+        $stmt->bind_param("i", $target);
+        $stmt->execute();
+        $targetRS = $stmt->get_result()->fetch_assoc();
+
+        //Active Elixirs.
+        $stmt = $this->conn->prepare("SELECT i.inventory_elixir_id, e.elixir_name FROM SeniorProject.sp_user_inventories i, SeniorProject.sp_elixirs e WHERE i.inventory_user_id = ? AND i.inventory_active = 1 AND i.inventory_elixir_id = e.elixir_id ORDER BY i.inventory_elixir_id ASC");
+        $stmt->bind_param("i", $initiator);
+        $stmt->execute();
+        $initiatorElixirs = $stmt->get_result();
+
+        while ($elixir = $initiatorElixirs->fetch_assoc()) {
+            switch ($elixir["inventory_elixir_id"]) {
+
+                //Poisons               
+                case 2011: //Birch Blood.
+                    $tmp = birchBlood(1);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2012: //Deluxe Birch Blood.
+                    $tmp = birchBlood(2);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2021: //Glove Cleaner.
+                    $tmp = gloveCleaner(2);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2022: //Deluxe Glove Cleaner.
+                    $tmp = gloveCleaner(3);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2023: //Premium Glove Cleaner.
+                    $tmp = gloveCleaner(4);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2031: //Altotoxin.
+                    $tmp = altotoxin(3, $targetRS["user_receivedscore"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2032: //Deluxe Altotoxin.
+                    $tmp = altotoxin(4, $targetRS["user_receivedscore"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2033: //Premium Altotoxin.
+                    $tmp = altotoxin(5, $targetRS["user_receivedscore"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2041: //Rumpelstiltskin's Decotion.
+                    $tmp = rumpDeco(4, $targetRS["user_receivedscore"], $initiatorSS["user_sentscore"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2042: //Deluxe Rumplestiltskin's Decotion.
+                    $tmp = rumpDeco(5, $targetRS["user_receivedscore"], $initiatorSS["user_sentscore"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2051: //Vampire Venom.
+                    $tmp = vampVenom(4, $targetRS["user_receivedscore"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 2052: //Deluxe Vampire Venom.
+                    $tmp = vampVenom(5, $targetRS["user_receivedscore"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+
+                //Boosters
+                case 4011: //Eagle Eye.
+                    $tmp = eagleEye($res["initiatorBoopValue"], $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4021: //Lite Corn Syrup.
+                    $tmp = cornSyrup(1);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4022: //Corn Syrup.
+                    $tmp = cornSyrup(2);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4023: //High Fructose Corn Syrup.
+                    $tmp = cornSyrup(3);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4031: //Super Electrolyte Punch.
+                    $tmp = electrolytePunch(3, $res["initiatorBoopValue"], $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4032: //Deluxe Mega Electrolyte Punch.
+                    $tmp = electrolytePunch(4, $res["initiatorBoopValue"], $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4033: //Premium Mondo Electrolyte Punch.
+                    $tmp = electrolytePunch(5, $res["initiatorBoopValue"], $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4041: //Discontinued Cereal Sludge.
+                    $tmp = cerealSludge($res["initiatorBoopValue"], $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+
+                default:
+                    $res["initiatorBoopValue"] = 1;
+                    $res["targetBoopValue"] = 1;
+                    break;
+            }
+            $this->decrementInventory($initiator, $elixir["inventory_elixir_id"]);
+            $res["initiatorElixirsUsed"][] = $elixir["inventory_elixir_id"];
+            $res["ieuHumanReadable"][] = $elixir["elixir_name"];
+        }
+
+        //Passive Elixirs.
+        $stmt = $this->conn->prepare("SELECT i.inventory_elixir_id, e.elixir_name FROM SeniorProject.sp_user_inventories i, SeniorProject.sp_elixirs e WHERE i.inventory_user_id = ? AND i.inventory_active = 1 AND i.inventory_elixir_id = e.elixir_id ORDER BY i.inventory_elixir_id ASC");
+        $stmt->bind_param("i", $target);
+        $stmt->execute();
+        $targetElixirs = $stmt->get_result();
+
+        while ($elixir = $targetElixirs->fetch_assoc()) {
+            switch ($elixir["inventory_elixir_id"]) {
+
+                //Shields
+                case 1011: //Wood Mitigation Shield.
+                    $tmp = mitigationShield(1, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1012: //Bronze Mitigation Shield.
+                    $tmp = mitigationShield(2, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1013: //Iron Mitigation Shield.
+                    $tmp = mitigationShield(3, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1014: //Rearden Steel Mitigation Shield.
+                    $tmp = mitigationShield(4, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1015: //Diamond Mitigation Shield.
+                    $tmp = mitigationShield(5, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1021: //Wood Negation Shield.
+                    $tmp = negationShield(1, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1022: //Bronze Negation Shield.
+                    $tmp = negationShield(2, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1023: //Iron Negation Shield.
+                    $tmp = negationShield(3, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1024: //Rearden Steel Negation Shield.
+                    $tmp = negationShield(4, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1025: //Diamond Negation Shield.
+                    $tmp = negationShield(5, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1031: //Wood Reflection Shield.
+                    $tmp = reflectionShield(1, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1032: //Bronze Reflection Shield.
+                    $tmp = reflectionShield(2, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1033: //Iron Reflection Shield.
+                    $tmp = reflectionShield(3, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1034: //Rearden Steel Reflection Shield.
+                    $tmp = reflectionShield(4, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1035: //Diamond Reflection Shield.
+                    $tmp = reflectionShield(5, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1041: //Rearden Steel Inversion Shield.
+                    $tmp = inversionShield(4, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 1042: //Diamond Inversion Shield.
+                    $tmp = inversionShield(5, $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+
+                //Antivenom
+                case 3011:
+                    $tmp = antivenom($res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+
+                //Boosters
+                case 4031: //Super Electrolyte Punch.
+                    $tmp = electrolytePunch(3, $res["initiatorBoopValue"], $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4032: //Deluxe Mega Electrolyte Punch.
+                    $tmp = electrolytePunch(4, $res["initiatorBoopValue"], $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+                case 4033: //Premium Mondo Electrolyte Punch.
+                    $tmp = electrolytePunch(5, $res["initiatorBoopValue"], $res["targetBoopValue"]);
+                    $res["initiatorBoopValue"] += $tmp["iniBVal"];
+                    $res["targetBoopValue"] += $tmp["tarBVal"];
+                    break;
+
+                default:
+                    $res["initiatorBoopValue"] = 0;
+                    $res["targetBoopValue"] = 0;
+                    break;
+            }
+            $this->decrementInventory($target, $elixir["inventory_elixir_id"]);
+            $res["targetElixirsUsed"][] = $elixir["inventory_elixir_id"];
+            $res["teuHumanReadable"][] = $elixir["elixir_name"];
+        }
+
+        return $res;
     }
 
     /**
@@ -460,28 +728,127 @@ class DbHandler {
      * @param int $target User_ID of the receiver.
      */
     public function boopUser($initiator, $target) {
-        if (!$this->cooldownActive($initiator, $target)) {
-            $value = $this->boopValue($initiator, $target);
+        $response = array();
+        $response["reward"] = array();
+        if (!($initiator == $target) and ! $this->cooldownActive($initiator, $target)) {
+            $res = $this->boopValue($initiator, $target);
+            $timestamp = date('Y-m-d G:i:s');
 
-            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_activities(activity_initiator, activity_target, activity_value, activity_timestamp) VALUES(?,?,?,NOW())");
-            $stmt->bind_param("iii", $initiator, $target, $value);
+            $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_activities(activity_initiator, activity_target, activity_value_initiator, activity_value_target, activity_timestamp) VALUES(?,?,?,?,?)");
+            $stmt->bind_param("iiiis", $initiator, $target, $res["initiatorBoopValue"], $res["targetBoopValue"], $timestamp);
             if ($stmt->execute()) {
                 $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_sentscore = user_sentscore + ? WHERE user_id = ?");
-                $stmt->bind_param("ii", $value, $initiator);
+                $stmt->bind_param("ii", $res["initiatorBoopValue"], $initiator);
                 $stmt->execute();
+
+                foreach ($res["initiatorElixirsUsed"] as $elixir) {
+                    $this->addHistory($timestamp, $initiator, $target, $elixir, 1);
+                }
 
                 $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_receivedscore = user_receivedscore + ? WHERE user_id = ?");
-                $stmt->bind_param("ii", $value, $target);
+                $stmt->bind_param("ii", $res["targetBoopValue"], $target);
                 $stmt->execute();
 
+                foreach ($res["targetElixirsUsed"] as $elixir) {
+                    $this->addHistory($timestamp, $initiator, $target, $elixir, 0);
+                }
+
+                $randElixir = $this->randomElixir(); //Reward initiator with qty 1-2 of a random elixir.
+                if ($randElixir > 0) {
+                    $tmp = array();
+
+                    $this->addInventoryItem($initiator, $randElixir, mt_rand(1, 2));
+
+                    $stmt = $this->conn->prepare("SELECT elixir_name, elixir_desc FROM SeniorProject.sp_elixirs WHERE elixir_id = ?");
+                    $stmt->bind_param("i", $randElixir);
+                    $stmt->execute();
+
+                    $tmp = $stmt->get_result()->fetch_assoc();
+                    array_push($response["reward"], $tmp);
+                }
+
+
+
                 $stmt->close();
-                return OPERATION_SUCCESS;
+
+                $response["timestamp"] = $timestamp;
+                $response["initiator boop value"] = $res["initiatorBoopValue"];
+                $response["target boop value"] = $res["targetBoopValue"];
+                $response["initiator elixirs used"] = $res["ieuHumanReadable"];
+                $response["target elixirs used"] = $res["teuHumanReadable"];
+                $response["status"] = OPERATION_SUCCESS;
+                return $response;
             } else {
-                return OPERATION_FAILED;
+                $stmt->close();
+
+                $response["status"] = OPERATION_FAILED;
+                return $response;
             }
         } else {
-            return OPERATION_FAILED;
+            $response["status"] = TIME_CONSTRAINT;
+            return $response;
         }
+    }
+
+    public function getBoopsSinceChecked($userID) {
+        $response = array();
+        $response["boops since last checked"] = array();
+
+        $stmt = $this->conn->prepare("SELECT user_lastchecked FROM SeniorProject.sp_users WHERE user_id = ?");
+        $stmt->bind_param("i", $userID);
+        $stmt->execute();
+        $lastChecked = $stmt->get_result()->fetch_assoc();
+
+        $stmt = $this->conn->prepare("SELECT u.user_id, u.user_name, u.user_sentscore, u.user_receivedscore, a.activity_value_initiator, a.activity_value_target, a.activity_timestamp "
+                . "FROM SeniorProject.sp_activities a, SeniorProject.sp_users u "
+                . "WHERE a.activity_timestamp > TIMESTAMP(?) AND a.activity_target = ? AND a.activity_initiator = u.user_id");
+        $stmt->bind_param("si", $lastChecked["user_lastchecked"], $userID);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        while ($boop = $res->fetch_assoc()) {
+            $tmp = array();
+            $tmp["initiator elixirs used"] = array();
+            $tmp["target elixirs used"] = array();
+
+            $stmt = $this->conn->prepare("SELECT e.elixir_name, a.elixir_activity_iORt "
+                    . "FROM SeniorProject.sp_elixirs e, SeniorProject.sp_elixir_activities a "
+                    . "WHERE a.elixir_activity_timestamp = ? AND a.elixir_activity_initiator = ? AND a.elixir_activity_elixirid = e.elixir_id");
+            $stmt->bind_param("si", $boop["activity_timestamp"], $boop["user_id"]);
+            $stmt->execute();
+            $elixirsUsed = $stmt->get_result();
+
+            while ($elixir = $elixirsUsed->fetch_assoc()) {
+                $tmp1 = array();
+                $tmp2 = array();
+                if ($elixir["elixir_activity_iORt"] == 1) {
+                    $tmp1["elixir_name"] = $elixir["elixir_name"];
+                } else {
+                    $tmp2["elixir_name"] = $elixir["elixir_name"];
+                }
+
+                array_push($tmp["initiator elixirs used"], $tmp1);
+                array_push($tmp["target elixirs used"], $tmp2);
+            }
+
+            $tmp["user id"] = $boop["user_id"];
+            $tmp["user name"] = $boop["user_name"];
+            $tmp["user sent score"] = $boop["user_sentscore"];
+            $tmp["user received score"] = $boop["user_receivedscore"];
+            $tmp["activity value initiator"] = $boop["activity_value_initiator"];
+            $tmp["activity value target"] = $boop["activity_value_target"];
+            $tmp["activity timestamp"] = $boop["activity_timestamp"];
+
+            array_push($response["boops since last checked"], $tmp);
+        }
+
+        $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_users SET user_lastchecked = NOW() WHERE user_id = ?");
+        $stmt->bind_param("i", $userID);
+        $stmt->execute();
+
+        $stmt->close();
+        $response["status"] = OPERATION_SUCCESS;
+        return $response;
     }
 
     /* --- sp_user_inventories TABLE METHODS --- */
@@ -552,6 +919,25 @@ class DbHandler {
         }
     }
 
+    public function setInventoryActive($userID, $elixirID, $active) {
+        $response = array();
+
+        if ($active > -1 and $active < 2) {
+            $stmt = $this->conn->prepare("UPDATE SeniorProject.sp_user_inventories SET inventory_active = ? WHERE inventory_user_id = ? AND inventory_elixir_id = ?");
+            $stmt->bind_param("iii", $active, $userID, $elixirID);
+            if ($stmt->execute()) {
+                $response["status"] = OPERATION_SUCCESS;
+            } else {
+                $response["status"] = OPERATION_FAILED;
+            }
+
+            $stmt->close();
+        } else {
+            $response["status"] = OPERATION_FAILED;
+        }
+        return $response;
+    }
+
     /**
      * Get the inventory of a particular user.
      * @param $userID
@@ -566,6 +952,153 @@ class DbHandler {
         $inventory = $stmt->get_result();
         $stmt->close();
         return $inventory;
+    }
+
+    public function randomElixir() {
+        $randStrength = mt_rand(0, 100000);
+
+        if ($randStrength <= 25000) { //Get nothing.
+            return -1;
+        } else if ($randStrength > 25000 and $randStrength <= 50000) { //Get level 1 item.
+            switch (mt_rand(1, 5)) {
+                case 1:
+                    return 1011; //Wood Mitigation Shield
+                case 2:
+                    return 1021; //Wood Negation Shield
+                case 3:
+                    return 1031; //Wood Reflection Shield
+                case 4:
+                    return 2011; //Birch Blood
+                default:
+                    return 4021; //Lite Corn Syrup
+            }
+        } else if ($randStrength > 50000 and $randStrength <= 68750) { //Get level 2 item.
+            switch (mt_rand(1, 6)) {
+                case 1:
+                    return 1012; //Bronze Mitigation Shield
+                case 2:
+                    return 1022; //Bronze Negation Shield
+                case 3:
+                    return 1032; //Bronze Reflection Shield
+                case 4:
+                    return 2012; //Deluxe Birch Blood
+                case 5:
+                    return 2021; //Glove Cleaner
+                default:
+                    return 4022; //Corn Syrup
+            }
+        } else if ($randStrength > 68750 and $randStrength <= 84375) { //Get level 3 item.
+            switch (mt_rand(1, 8)) {
+                case 1:
+                    return 1013; //Iron Mitigation Shield
+                case 2:
+                    return 1023; //Iron Negation Shield
+                case 3:
+                    return 1033; //Iron Reflection Shield
+                case 4:
+                    return 2022; //Deluxe Glove Cleaner
+                case 5:
+                    return 2031; //Altotoxin
+                case 6:
+                    return 3011; //Peptotumsinol
+                case 7:
+                    return 4023; //High Fructose Corn Syrup
+                default:
+                    return 4031; //Super Electrolyte Punch
+            }
+        } else if ($randStrength > 84375 and $randStrength <= 93750) { //Get level 4 item.
+            switch (mt_rand(1, 10)) {
+                case 1:
+                    return 1014; //Rearden Steel Mitigation Shield
+                case 2:
+                    return 1024; //Rearden Steel Negation Shield
+                case 3:
+                    return 1034; //Rearden Steel Reflection Shield
+                case 4:
+                    return 1041; //Rearden Steel Inversion Shield
+                case 5:
+                    return 2023; //Premium Glove Cleaner
+                case 6:
+                    return 2032; //Deluxe Altotoxin
+                case 7:
+                    return 2041; //Rumpelstiltskin's Decoction
+                case 8:
+                    return 2051; //Vampire Venom
+                case 9:
+                    return 4032; //Deluxe Mega Electrolyte Punch
+                default:
+                    return 4041; //Discontinued Cereal Sludge
+            }
+        } else if ($randStrength > 93750) { //Get level 5 item.
+            switch (mt_rand(1, 9)) {
+                case 1:
+                    return 1015; //Diamond Mitigation Shield
+                case 2:
+                    return 1025; //Diamond Negation Shield
+                case 3:
+                    return 1035; //Diamond Reflection Shield
+                case 4:
+                    return 1042; //Diamond Inversion Shield
+                case 5:
+                    return 2033; //Premium Altotoxin
+                case 6:
+                    return 2042; //Deluxe Rumpelstiltskin's Decoction
+                case 7:
+                    return 2052; //Deluxe Vampire Venom
+                case 8:
+                    return 4011; //Eagle Eye
+                default:
+                    return 4033; //Premium Mondo Electrolyte Punch
+            }
+        }
+    }
+
+    /* --- sp_elixir_activities TABLE METHODS --- */
+
+    /**
+     * Add entry describing elixirs used.
+     * @param String $timestamp
+     * @param int $initiator
+     * @param int $target
+     * @param int $elixirID
+     * @param int $iORt
+     */
+    public function addHistory($timestamp, $initiator, $target, $elixirID, $iORt) {
+        $stmt = $this->conn->prepare("INSERT INTO SeniorProject.sp_elixir_activities(elixir_activity_timestamp, elixir_activity_initiator, elixir_activity_target, elixir_activity_elixirid, elixir_activity_iORt) VALUES(?,?,?,?,?)");
+        $stmt->bind_param("siiii", $timestamp, $initiator, $target, $elixirID, $iORt);
+        $stmt->execute();
+    }
+
+    /* --- STATS METHODS --- */
+
+    public function globalTopSenders($number) {
+        $res = array();
+        $res["top senders"] = array();
+
+        $stmt = $this->conn->prepare("SELECT user_name, user_sentscore, user_receivedscore FROM SeniorProject.sp_users ORDER BY user_sentscore DESC LIMIT ?");
+        $stmt->bind_param("i", $number);
+        $stmt->execute();
+
+        $res["status"] = OPERATION_SUCCESS;
+        $res["top senders"] = $stmt->get_result();
+
+        $stmt->close();
+        return $res;
+    }
+
+    public function globalTopReceivers($number) {
+        $res = array();
+        $res["top receivers"] = array();
+
+        $stmt = $this->conn->prepare("SELECT user_name, user_sentscore, user_receivedscore FROM SeniorProject.sp_users ORDER BY user_receivedscore DESC LIMIT ?");
+        $stmt->bind_param("i", $number);
+        $stmt->execute();
+
+        $res["status"] = OPERATION_SUCCESS;
+        $res["top receivers"] = $stmt->get_result();
+
+        $stmt->close();
+        return $res;
     }
 
 }
