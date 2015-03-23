@@ -6,6 +6,7 @@
  * @author Caleb Lawson <caleb@lawson.rocks>
  */
 require_once '../include/dbhandler.php';
+require_once '../include/config.php';
 require '.././libs/Slim/Slim.php';
 
 \Slim\Slim::registerAutoloader();
@@ -41,10 +42,9 @@ function verifyRequiredParams($required_fields) {
         // Echo error json and stop the app.
         $response = array();
         $app = \Slim\Slim::getInstance();
-        $response["error"] = true;
-        $response["message"] = 'Required field(s) ' . substr($error_fields, 0, -2) .
-                ' are missing or empty';
-        echoRespnse(400, $response);
+        $response["status"] = OPERATION_FAILED;
+        $response["required fields"] = substr($error_fields, 0, -2);
+        echoResponse(400, $response);
         $app->stop();
     }
 }
@@ -54,7 +54,7 @@ function verifyRequiredParams($required_fields) {
  * @param String $status_code Http response code.
  * @param Int $response Json response.
  */
-function echoRespnse($status_code, $response) {
+function echoResponse($status_code, $response) {
     $app = \Slim\Slim::getInstance();
     // Http response code
     $app->status($status_code);
@@ -76,17 +76,16 @@ function authenticate(\Slim\Route $route) {
     $app = \Slim\Slim::getInstance();
 
     // Verifying Authorization Header
-    if (isset($headers['Authorization'])) {
+    if (isset($headers['authorization'])) {
         $db = new DbHandler();
 
         // get the api key
-        $apiKey = $headers['Authorization'];
+        $apiKey = $headers['authorization'];
         // validating api key
         if (!$db->isValidApiKey($apiKey)) {
             // api key is not present in users table
-            $response["error"] = true;
-            $response["message"] = "Invalid API key.  Access denied.";
-            echoRespnse(401, $response);
+            $response["status"] = INVALID_CREDENTIALS;
+            echoResponse(401, $response);
             $app->stop();
         } else {
             global $user_id;
@@ -95,9 +94,8 @@ function authenticate(\Slim\Route $route) {
         }
     } else {
         // api key is missing in header
-        $response["error"] = true;
-        $response["message"] = "API key missing.";
-        echoRespnse(400, $response);
+        $response["status"] = OPERATION_FAILED;
+        echoResponse(400, $response);
         $app->stop();
     }
 }
@@ -113,27 +111,26 @@ function authenticate(\Slim\Route $route) {
  */
 $app->post('/register', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('username', 'uniqueID'));
+    verifyRequiredParams(array('username', 'uid'));
 
     $response = array();
 
     // reading post params
     $username = strtolower($app->request->post('username'));
-    $uniqueID = $app->request->post('uniqueID');
+    $uniqueID = $app->request->post('uid');
 
     $db = new DbHandler();
     $res = $db->createUser($username, $uniqueID);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "An exception has occured!";
-    } else if ($res == ALREADY_EXISTS) {
-        $response["message"] = "Username already registered.";
+    if ($res["status"] == ALREADY_EXISTS) {
+        $response["status"] = ALREADY_EXISTS;
     } else {
-        $response["message"] = "Successfully registered.";
-        $response["apikey"] = $res;
+        $response["status"] = OPERATION_SUCCESS;
+        $response["apikey"] = $res["apikey"];
     }
+
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -144,25 +141,28 @@ $app->post('/register', function() use ($app) {
  */
 $app->post('/update_key', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('username', 'uniqueID'));
+    verifyRequiredParams(array('username', 'uid'));
 
     $response = array();
 
     // reading post params
     $username = strtolower($app->request->post('username'));
-    $uniqueID = $app->request->post('uniqueID');
+    $uniqueID = $app->request->post('uid');
 
     $db = new DbHandler();
     $res = $db->updateApiKey($username, $uniqueID);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "An exception has occured!";
+    if ($res["status"] == DOES_NOT_EXIST) {
+        $response["status"] = DOES_NOT_EXIST;
+    } else if ($res["status"] == INVALID_CREDENTIALS) {
+        $response["status"] = INVALID_CREDENTIALS;
     } else {
-        $response["message"] = "Successfully updated.";
-        $response["apikey"] = $res;
+        $response["status"] = OPERATION_SUCCESS;
+        $response["apikey"] = $res["apikey"];
     }
+
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -175,13 +175,13 @@ $app->post('/update_key', function() use ($app) {
  */
 $app->post('/update_username', 'authenticate', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('newUsername', 'uniqueID'));
+    verifyRequiredParams(array('newUsername', 'uid'));
 
     $response = array();
 
     // reading post params
     $newUsername = strtolower($app->request->post('newUsername'));
-    $uniqueID = $app->request->post('uniqueID');
+    $uniqueID = $app->request->post('uid');
 
     global $user_id;
     $db = new DbHandler();
@@ -189,25 +189,21 @@ $app->post('/update_username', 'authenticate', function() use ($app) {
 
     if ($res["status"] == OPERATION_SUCCESS) {
         $response["status"] = OPERATION_SUCCESS;
-        $response["message"] = "Successfully updated username.";
-        $response["newUsername"] = $res["newUsername"];
-        $response["newApiKey"] = $res["newApiKey"];
+        $response["new username"] = $res["newUsername"];
+        $response["new apikey"] = $res["newApiKey"];
     } else if ($res["status"] == TIME_CONSTRAINT) {
         $response["status"] = TIME_CONSTRAINT;
-        $response["message"] = "A username can only be changed every 14 days";
-        $response["days_remaining"] = $res["days_remaining"];
+        $response["days remaining"] = $res["days_remaining"];
     } else if ($res["status"] == ALREADY_EXISTS) {
         $response["status"] = ALREADY_EXISTS;
-        $response["message"] = "Another user already has this name.";
     } else if ($res["status"] == INVALID_CREDENTIALS) {
         $response["status"] = INVALID_CREDENTIALS;
-        $response["message"] = "One of your credentials is invalid.";
     } else {
-        $response["message"] = "Unexpected Result.";
+        $response["status"] = OPERATION_FAILED;
     }
 
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -229,13 +225,10 @@ $app->post('/update_location', 'authenticate', function() use ($app) {
     $db = new DbHandler();
     $res = $db->updateLocation($user_id, $latitude, $longitude);
 
-    if ($res == OPERATION_SUCCESS) {
-        $response["message"] = "Successfully updated.";
-    } else {
-        $response["message"] = "An exception has occured!";
-    }
+    $response["status"] = OPERATION_SUCCESS;
+
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -253,13 +246,10 @@ $app->post('/delete_location', 'authenticate', function() use ($app) {
     $db = new DbHandler();
     $res = $db->deleteLocation($user_id);
 
-    if ($res == OPERATION_SUCCESS) {
-        $response["message"] = "Successfully deleted.";
-    } else {
-        $response["message"] = "An exception has occured!";
-    }
+    $response["status"] = OPERATION_SUCCESS;
+
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -282,23 +272,19 @@ $app->post('/get_nearby', 'authenticate', function() use ($app) {
     $db = new DbHandler();
     $res = $db->nearbyUsers($latitude, $longitude, $user_id);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else {
-        $response["message"] = "Success!";
+    $response["status"] = OPERATION_SUCCESS;
 
-        while ($user = $res->fetch_assoc()) {
-            $tmp = array();
-            $tmp["user_id"] = $user["user_id"];
-            $tmp["user_name"] = $user["user_name"];
-            $tmp["user_receivedscore"] = $user["user_receivedscore"];
-            $tmp["user_sentscore"] = $user["user_sentscore"];
-            array_push($response["nearby users"], $tmp);
-        }
+    while ($user = $res["nearby users"]->fetch_assoc()) {
+        $tmp = array();
+        $tmp["user id"] = $user["user_id"];
+        $tmp["username"] = $user["user_name"];
+        $tmp["user received score"] = $user["user_receivedscore"];
+        $tmp["user sent score"] = $user["user_sentscore"];
+        array_push($response["nearby users"], $tmp);
     }
 
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -308,25 +294,27 @@ $app->post('/get_nearby', 'authenticate', function() use ($app) {
  */
 $app->post('/add_friend', 'authenticate', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('friendID'));
+    verifyRequiredParams(array('target'));
 
     $response = array();
 
     // reading post params
-    $friendID = $app->request->post('friendID');
+    $target = $app->request->post('target');
 
     global $user_id;
     $db = new DbHandler();
-    $res = $db->addFriend($user_id, $friendID);
+    $res = $db->addFriend($user_id, $target);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
+    if ($res["status"] == OPERATION_FAILED) {
+        $response["status"] = OPERATION_FAILED;
+    } else if ($res["status"] == ALREADY_EXISTS) {
+        $response["status"] = ALREADY_EXISTS;
     } else {
-        $response["message"] = "Success!";
+        $response["status"] = OPERATION_SUCCESS;
     }
 
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -336,27 +324,29 @@ $app->post('/add_friend', 'authenticate', function() use ($app) {
  */
 $app->post('/add_friend_by_username', 'authenticate', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('username'));
+    verifyRequiredParams(array('target'));
 
     $response = array();
 
     // reading post params
-    $username = $app->request->post('username');
+    $target = $app->request->post('target');
 
     global $user_id;
     $db = new DbHandler();
-    $res = $db->addFriendByUsername($user_id, $username);
+    $res = $db->addFriendByUsername($user_id, $target);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else if ($res == DOES_NOT_EXIST) {
-        $response["message"] = "Does not exist!";
+    if ($res["status"] == OPERATION_FAILED) {
+        $response["status"] = OPERATION_FAILED;
+    } else if ($res["status"] == DOES_NOT_EXIST) {
+        $response["status"] = DOES_NOT_EXIST;
+    } else if ($res["status"] == ALREADY_EXISTS) {
+        $response["status"] = ALREADY_EXISTS;
     } else {
-        $response["message"] = "Success!";
+        $response["status"] = OPERATION_SUCCESS;
     }
 
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -366,25 +356,21 @@ $app->post('/add_friend_by_username', 'authenticate', function() use ($app) {
  */
 $app->post('/remove_friend', 'authenticate', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('friendID'));
+    verifyRequiredParams(array('target'));
 
     $response = array();
 
     // reading post params
-    $friendID = $app->request->post('friendID');
+    $target = $app->request->post('target');
 
     global $user_id;
     $db = new DbHandler();
-    $res = $db->removeFriend($user_id, $friendID);
+    $res = $db->removeFriend($user_id, $target);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else {
-        $response["message"] = "Success!";
-    }
+    $response["status"] = OPERATION_SUCCESS;
 
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -401,23 +387,20 @@ $app->get('/get_friends', 'authenticate', function() {
     $db = new DbHandler();
     $res = $db->getFriends($user_id);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else {
-        $response["message"] = "Success!";
+    $response["status"] = OPERATION_SUCCESS;
 
-        while ($friend = $res->fetch_assoc()) {
-            $tmp = array();
-            $tmp["user_id"] = $friend["user_id"];
-            $tmp["user_name"] = $friend["user_name"];
-            $tmp["user_receivedscore"] = $friend["user_receivedscore"];
-            $tmp["user_sentscore"] = $friend["user_sentscore"];
+    while ($friend = $res->fetch_assoc()) {
+        $tmp = array();
+        $tmp["user id"] = $friend["user_id"];
+        $tmp["username"] = $friend["user_name"];
+        $tmp["user received score"] = $friend["user_receivedscore"];
+        $tmp["user sent score"] = $friend["user_sentscore"];
 
-            array_push($response["friends"], $tmp);
-        }
+        array_push($response["friends"], $tmp);
     }
+
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -433,23 +416,20 @@ $app->get('/get_pending', 'authenticate', function() {
     $db = new DbHandler();
     $res = $db->getPendingRequests($user_id);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else {
-        $response["message"] = "Success!";
+    $response["status"] = OPERATION_SUCCESS;
 
-        while ($pend = $res->fetch_assoc()) {
-            $tmp = array();
-            $tmp["user_id"] = $pend["user_id"];
-            $tmp["user_name"] = $pend["user_name"];
-            $tmp["user_receivedscore"] = $pend["user_receivedscore"];
-            $tmp["user_sentscore"] = $pend["user_sentscore"];
+    while ($pend = $res->fetch_assoc()) {
+        $tmp = array();
+        $tmp["user id"] = $pend["user_id"];
+        $tmp["username"] = $pend["user_name"];
+        $tmp["user received score"] = $pend["user_receivedscore"];
+        $tmp["user sent score"] = $pend["user_sentscore"];
 
-            array_push($response["pending"], $tmp);
-        }
+        array_push($response["pending"], $tmp);
     }
+
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -465,23 +445,19 @@ $app->get('/get_requests', 'authenticate', function() {
     $db = new DbHandler();
     $res = $db->getFriendRequests($user_id);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else {
-        $response["message"] = "Success!";
+    $response["status"] = OPERATION_SUCCESS;
 
-        while ($requ = $res->fetch_assoc()) {
-            $tmp = array();
-            $tmp["user_id"] = $requ["user_id"];
-            $tmp["user_name"] = $requ["user_name"];
-            $tmp["user_receivedscore"] = $requ["user_receivedscore"];
-            $tmp["user_sentscore"] = $requ["user_sentscore"];
+    while ($requ = $res->fetch_assoc()) {
+        $tmp = array();
+        $tmp["user id"] = $requ["user_id"];
+        $tmp["username"] = $requ["user_name"];
+        $tmp["user received score"] = $requ["user_receivedscore"];
+        $tmp["user sent score"] = $requ["user_sentscore"];
 
-            array_push($response["requests"], $tmp);
-        }
+        array_push($response["requests"], $tmp);
     }
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -491,16 +467,16 @@ $app->get('/get_requests', 'authenticate', function() {
  */
 $app->post('/boop_user', 'authenticate', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('targetid'));
+    verifyRequiredParams(array('target'));
 
     $response = array();
 
     // reading post params
-    $targetID = $app->request->post('targetid');
+    $target = $app->request->post('target');
 
     global $user_id;
     $db = new DbHandler();
-    $res = $db->boopUser($user_id, $targetID);
+    $res = $db->boopUser($user_id, $target);
 
     if ($res["status"] == TIME_CONSTRAINT) {
         $response["status"] = TIME_CONSTRAINT;
@@ -513,10 +489,10 @@ $app->post('/boop_user', 'authenticate', function() use ($app) {
         $response["target boop value"] = $res["target boop value"];
         $response["initiator elixirs used"] = $res["initiator elixirs used"];
         $response["target elixirs used"] = $res["target elixirs used"];
-        $response["elixir rewards"] = $res["reward"];
+        $response["rewards"] = $res["reward"];
     }
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -533,43 +509,37 @@ $app->get('/get_inventory', 'authenticate', function() {
     $db = new DbHandler();
     $res = $db->getInventory($user_id);
 
-    if ($res == OPERATION_FAILED) {
-        $response["message"] = "Fail!";
-    } else {
-        $response["message"] = "Success!";
+    $response["status"] = OPERATION_SUCCESS;
+    while ($inv = $res["inventory"]->fetch_assoc()) {
+        $tmp = array();
+        $tmp["id"] = $inv["elixir_id"];
+        $tmp["type"] = $inv["elixir_type"];
+        $tmp["name"] = $inv["elixir_name"];
+        $tmp["description"] = $inv["elixir_desc"];
+        $tmp["quantity"] = $inv["inventory_quantity"];
+        $tmp["active"] = $inv["inventory_active"];
 
-        while ($inv = $res->fetch_assoc()) {
-            $tmp = array();
-            $tmp["elixir_id"] = $inv["elixir_id"];
-            $tmp["elixir_type"] = $inv["elixir_type"];
-            $tmp["elixir_name"] = $inv["elixir_name"];
-            $tmp["elixir_desc"] = $inv["elixir_desc"];
-            $tmp["inventory_quantity"] = $inv["inventory_quantity"];
-            $tmp["inventory_active"] = $inv["inventory_active"];
-
-            array_push($response["inventory"], $tmp);
-        }
+        array_push($response["inventory"], $tmp);
     }
 
-
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 $app->post('/inventory_set_active', 'authenticate', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('elixirid', 'active'));
+    verifyRequiredParams(array('elixir', 'active'));
 
     $response = array();
 
     // reading post params
-    $elixirID = $app->request->post('elixirid');
+    $elixir = $app->request->post('elixir');
     $active = $app->request->post('active');
 
 
     global $user_id;
     $db = new DbHandler();
-    $res = $db->setInventoryActive($user_id, $elixirID, $active);
+    $res = $db->setInventoryActive($user_id, $elixir, $active);
 
     if ($res["status"] == OPERATION_FAILED) {
         $response["status"] = OPERATION_FAILED;
@@ -577,7 +547,7 @@ $app->post('/inventory_set_active', 'authenticate', function() use ($app) {
         $response["status"] = OPERATION_SUCCESS;
     }
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -595,13 +565,13 @@ $app->get('/get_top_senders', 'authenticate', function() {
 
     if ($res["status"] == OPERATION_SUCCESS) {
         $response["status"] = OPERATION_SUCCESS;
-        
-        while($player = $res["top senders"]->fetch_assoc()){
+
+        while ($player = $res["top senders"]->fetch_assoc()) {
             $tmp = array();
-            $tmp["user_name"] = $player["user_name"];
-            $tmp["user_sentscore"] = $player["user_sentscore"];
-            $tmp["user_receivedscore"] = $player["user_receivedscore"];
-            
+            $tmp["username"] = $player["user_name"];
+            $tmp["user sent score"] = $player["user_sentscore"];
+            $tmp["user received score"] = $player["user_receivedscore"];
+
             array_push($response["top senders"], $tmp);
         }
     } else {
@@ -609,7 +579,7 @@ $app->get('/get_top_senders', 'authenticate', function() {
     }
 
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -627,13 +597,13 @@ $app->get('/get_top_receivers', 'authenticate', function() {
 
     if ($res["status"] == OPERATION_SUCCESS) {
         $response["status"] = OPERATION_SUCCESS;
-        
-        while($player = $res["top receivers"]->fetch_assoc()){
+
+        while ($player = $res["top receivers"]->fetch_assoc()) {
             $tmp = array();
             $tmp["user_name"] = $player["user_name"];
             $tmp["user_sentscore"] = $player["user_sentscore"];
             $tmp["user_receivedscore"] = $player["user_receivedscore"];
-            
+
             array_push($response["top receivers"], $tmp);
         }
     } else {
@@ -641,7 +611,7 @@ $app->get('/get_top_receivers', 'authenticate', function() {
     }
 
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -652,7 +622,6 @@ $app->get('/get_top_receivers', 'authenticate', function() {
 $app->get('/get_boops_since_checked', 'authenticate', function() {
 
     $response = array();
-    $response["top receivers"] = array();
 
     global $user_id;
     $db = new DbHandler();
@@ -661,7 +630,7 @@ $app->get('/get_boops_since_checked', 'authenticate', function() {
     $response = $res;
 
     // echo json response
-    echoRespnse(201, $response);
+    echoResponse(201, $response);
 });
 $app->run();
 ?>

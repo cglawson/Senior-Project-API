@@ -1,5 +1,11 @@
 <?php
 
+/**
+ *Handles the scoring of elixirs.
+ * 
+ * @author Caleb Lawson <caleb@lawson.rocks>
+ */
+
 /* --- POISONS --- */
 
 /**
@@ -158,19 +164,22 @@ function eagleEye($initiatorBoopValue, $targetBoopValue) {
  * @param int $strength
  * @return array
  */
-function cornSyrup($strength) {
+function cornSyrup($strength, $targetBoopValue) {
     $values = array();
+    $val = 0;
 
-    switch ($strength) {
-        case 3: //High Fructose Corn Syrup
-            $val = mt_rand(4, 8);
-            break;
-        case 2: //Corn Syrup
-            $val = mt_rand(2, 4);
-            break;
-        default: //Lite Corn Syrup
-            $val = mt_rand(1, 2);
-            break;
+    if ($targetBoopValue > 0) {
+        switch ($strength) {
+            case 3: //High Fructose Corn Syrup
+                $val = mt_rand(4, 8);
+                break;
+            case 2: //Corn Syrup
+                $val = mt_rand(2, 4);
+                break;
+            default: //Lite Corn Syrup
+                $val = mt_rand(1, 2);
+                break;
+        }
     }
 
     $values["iniBVal"] = $val;
@@ -376,11 +385,11 @@ function inversionShield($strength, $targetBoopValue) {
 /* --- ANTIVENOM --- */
 
 /**
- * Antivenom, completely counteracts damage.
+ * Peptotumsinol, completely counteracts damage.
  * @param int $targetBoopValue
  * @return array
  */
-function antivenom($targetBoopValue) {
+function peptotumsinol($targetBoopValue) {
     $values = array();
 
     if ($targetBoopValue < 0) { //If damage is aimed at the target.
