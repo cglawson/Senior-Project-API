@@ -135,19 +135,19 @@ $app->post('/register', function() use ($app) {
 
 /**
  * Refresh API Key
- * url - /update_key
- * method - POST
+ * url - /refresh_apikey
+ * method - PUT
  * params - username, uniqueID
  */
-$app->post('/update_key', function() use ($app) {
+$app->put('/refresh_apikey', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('username', 'uid'));
 
     $response = array();
 
     // reading post params
-    $username = strtolower($app->request->post('username'));
-    $uniqueID = $app->request->post('uid');
+    $username = strtolower($app->request->put('username'));
+    $uniqueID = $app->request->put('uid');
 
     $db = new DbHandler();
     $res = $db->updateApiKey($username, $uniqueID);
@@ -170,18 +170,18 @@ $app->post('/update_key', function() use ($app) {
  */
 /**
  * Update username.
- * method POST
- * url /update_username
+ * method PUT
+ * url /username
  */
-$app->post('/update_username', 'authenticate', function() use ($app) {
+$app->put('/username', 'authenticate', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('newUsername', 'uid'));
 
     $response = array();
 
     // reading post params
-    $newUsername = strtolower($app->request->post('newUsername'));
-    $uniqueID = $app->request->post('uid');
+    $newUsername = strtolower($app->request->put('newUsername'));
+    $uniqueID = $app->request->put('uid');
 
     global $user_id;
     $db = new DbHandler();
@@ -203,23 +203,23 @@ $app->post('/update_username', 'authenticate', function() use ($app) {
     }
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * Update location.
- * method POST
- * url /update_location
+ * method PUT
+ * url /location
  */
-$app->post('/update_location', 'authenticate', function() use ($app) {
+$app->put('/location', 'authenticate', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('latitude', 'longitude'));
 
     $response = array();
 
     // reading post params
-    $latitude = $app->request->post('latitude');
-    $longitude = $app->request->post('longitude');
+    $latitude = $app->request->put('latitude');
+    $longitude = $app->request->put('longitude');
 
     global $user_id;
     $db = new DbHandler();
@@ -228,18 +228,15 @@ $app->post('/update_location', 'authenticate', function() use ($app) {
     $response["status"] = OPERATION_SUCCESS;
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * Delete location.
- * method POST
- * url /delete_location
+ * method DELETE
+ * url /location
  */
-$app->post('/delete_location', 'authenticate', function() use ($app) {
-    // check for required params
-    verifyRequiredParams(array());
-
+$app->delete('/location', 'authenticate', function() use ($app) {
     $response = array();
 
     global $user_id;
@@ -249,15 +246,15 @@ $app->post('/delete_location', 'authenticate', function() use ($app) {
     $response["status"] = OPERATION_SUCCESS;
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * List all nearby users.
- * method POST
- * url /get_nearby
+ * method GET
+ * url /nearby
  */
-$app->post('/get_nearby', 'authenticate', function() use ($app) {
+$app->post('/nearby', 'authenticate', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('latitude', 'longitude'));
 
@@ -266,8 +263,8 @@ $app->post('/get_nearby', 'authenticate', function() use ($app) {
     $response["nearby users"] = [];
 
     // reading post params
-    $latitude = $app->request->post('latitude');
-    $longitude = $app->request->post('longitude');
+    $latitude = $app->request->get('latitude');
+    $longitude = $app->request->get('longitude');
 
     $db = new DbHandler();
     $res = $db->nearbyUsers($latitude, $longitude, $user_id);
@@ -284,15 +281,15 @@ $app->post('/get_nearby', 'authenticate', function() use ($app) {
     }
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * Request a user's friendship.
  * method POST
- * url /add_friend
+ * url /friend
  */
-$app->post('/add_friend', 'authenticate', function() use ($app) {
+$app->post('/friend', 'authenticate', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('target'));
 
@@ -320,9 +317,9 @@ $app->post('/add_friend', 'authenticate', function() use ($app) {
 /**
  * Request a user's friendship by username.
  * method POST
- * url /add_friend_by_username
+ * url /friend_username
  */
-$app->post('/add_friend_by_username', 'authenticate', function() use ($app) {
+$app->post('/friend_username', 'authenticate', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('target'));
 
@@ -351,17 +348,11 @@ $app->post('/add_friend_by_username', 'authenticate', function() use ($app) {
 
 /**
  * Remove a user's friendship.
- * method POST
- * url /remove_friend
+ * method DELETE
+ * url /friend
  */
-$app->post('/remove_friend', 'authenticate', function() use ($app) {
-    // check for required params
-    verifyRequiredParams(array('target'));
-
+$app->delete('/friend/:id', 'authenticate', function($target) use ($app) {
     $response = array();
-
-    // reading post params
-    $target = $app->request->post('target');
 
     global $user_id;
     $db = new DbHandler();
@@ -370,15 +361,15 @@ $app->post('/remove_friend', 'authenticate', function() use ($app) {
     $response["status"] = OPERATION_SUCCESS;
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * List the friends of a particular user.
  * method GET
- * url /get_friends
+ * url /friends
  */
-$app->get('/get_friends', 'authenticate', function() {
+$app->get('/friend', 'authenticate', function() {
 
     $response = array();
     $response["friends"] = [];
@@ -400,15 +391,15 @@ $app->get('/get_friends', 'authenticate', function() {
     }
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * List the users you have pending friendships with.
  * method GET
- * url /get_pending
+ * url /outgoing_requests
  */
-$app->get('/get_pending', 'authenticate', function() {
+$app->get('/outgoing_requests', 'authenticate', function() {
     $response = array();
     $response["pending"] = [];
 
@@ -429,15 +420,15 @@ $app->get('/get_pending', 'authenticate', function() {
     }
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * List the users you have pending friendships with.
  * method GET
- * url /get_requests
+ * url /incoming_requests
  */
-$app->get('/get_requests', 'authenticate', function() {
+$app->get('/incoming_requests', 'authenticate', function() {
     $response = array();
     $response["requests"] = [];
 
@@ -457,15 +448,15 @@ $app->get('/get_requests', 'authenticate', function() {
         array_push($response["requests"], $tmp);
     }
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * Boop a user.
  * method POST
- * url /boop_user
+ * url /boop
  */
-$app->post('/boop_user', 'authenticate', function() use ($app) {
+$app->post('/boop', 'authenticate', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('target'));
 
@@ -496,11 +487,31 @@ $app->post('/boop_user', 'authenticate', function() use ($app) {
 });
 
 /**
+ * Get boops sent to you since last check.
+ * method GET
+ * url /boop
+ */
+$app->get('/boop', 'authenticate', function() {
+
+    $response = array();
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->getBoopsSinceChecked($user_id);
+
+    $response = $res;
+
+    // echo json response
+    echoResponse(200, $response);
+});
+$app->run();
+
+/**
  * List the inventory of a particular user.
  * method GET
- * url /get_inventory
+ * url /inventory
  */
-$app->get('/get_inventory', 'authenticate', function() {
+$app->get('/inventory', 'authenticate', function() {
 
     $response = array();
     $response["inventory"] = [];
@@ -523,18 +534,23 @@ $app->get('/get_inventory', 'authenticate', function() {
     }
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
-$app->post('/inventory_set_active', 'authenticate', function() use ($app) {
+/**
+ * Set an inventory item active.
+ * method PUT
+ * url /inventory
+ */
+$app->put('/inventory', 'authenticate', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('elixir', 'active'));
 
     $response = array();
 
     // reading post params
-    $elixir = $app->request->post('elixir');
-    $active = $app->request->post('active');
+    $elixir = $app->request->put('elixir');
+    $active = $app->request->put('active');
 
 
     global $user_id;
@@ -547,15 +563,15 @@ $app->post('/inventory_set_active', 'authenticate', function() use ($app) {
         $response["status"] = OPERATION_SUCCESS;
     }
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * List the top 20 users based on sentscore.
  * method GET
- * url /get_top_senders
+ * url /top_senders
  */
-$app->get('/get_top_senders', 'authenticate', function() {
+$app->get('/top_senders', 'authenticate', function() {
 
     $response = array();
     $response["top senders"] = array();
@@ -579,15 +595,15 @@ $app->get('/get_top_senders', 'authenticate', function() {
     }
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
 
 /**
  * List the top 20 users based on receivedscore.
  * method GET
- * url /get_top_receivers
+ * url /top_receivers
  */
-$app->get('/get_top_receivers', 'authenticate', function() {
+$app->get('/top_receivers', 'authenticate', function() {
 
     $response = array();
     $response["top receivers"] = array();
@@ -611,26 +627,6 @@ $app->get('/get_top_receivers', 'authenticate', function() {
     }
 
     // echo json response
-    echoResponse(201, $response);
+    echoResponse(200, $response);
 });
-
-/**
- * Get boops sent to you since last check.
- * method GET
- * url /get_boops_since_checked
- */
-$app->get('/get_boops_since_checked', 'authenticate', function() {
-
-    $response = array();
-
-    global $user_id;
-    $db = new DbHandler();
-    $res = $db->getBoopsSinceChecked($user_id);
-
-    $response = $res;
-
-    // echo json response
-    echoResponse(201, $response);
-});
-$app->run();
 ?>

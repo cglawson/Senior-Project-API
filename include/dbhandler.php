@@ -15,7 +15,7 @@ class DbHandler {
         // opening db connection
         $db = new DbConnect();
         $this->conn = $db->connect();
-        date_default_timezone_set('America/Louisville');
+        date_default_timezone_set('America/Chicago');
     }
 
     /* --- sp_users TABLE METHODS --- */
