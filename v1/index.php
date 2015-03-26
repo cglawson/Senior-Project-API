@@ -21,29 +21,19 @@ $user_id = NULL;
  * @param Array $required_fields Array of required parameters.
  */
 function verifyRequiredParams($required_fields) {
-    $error = false;
-    $error_fields = "";
-    $request_params = array();
-    $request_params = $_REQUEST;
-    // Handling PUT request parameters.
-    if ($_SERVER['REQUEST_METHOD'] == 'PUT') {
-        $app = \Slim\Slim::getInstance();
-        parse_str($app->request()->getBody(), $request_params);
-    }
-    foreach ($required_fields as $field) {
-        if (!isset($request_params[$field]) || strlen(trim($request_params[$field])) <= 0) {
-            $error = true;
-            $error_fields .= $field . ', ';
+    $response = array();
+    $response["required fields"] = "";
+    
+    $app = \Slim\Slim::getInstance();
+    
+    foreach($required_fields as $field){
+        if(is_null($app->request->params($field))){
+            $response["required fields"] = $response["required fields"] . $field . " ";
         }
     }
-
-    if ($error) {
-        // Required field(s) are missing or empty.
-        // Echo error json and stop the app.
-        $response = array();
-        $app = \Slim\Slim::getInstance();
+    
+    if($response["required fields"] != ""){
         $response["status"] = OPERATION_FAILED;
-        $response["required fields"] = substr($error_fields, 0, -2);
         echoResponse(400, $response);
         $app->stop();
     }
@@ -76,11 +66,11 @@ function authenticate(\Slim\Route $route) {
     $app = \Slim\Slim::getInstance();
 
     // Verifying Authorization Header
-    if (isset($headers['authorization'])) {
+    if (isset($headers['Auth'])) {
         $db = new DbHandler();
 
         // get the api key
-        $apiKey = $headers['authorization'];
+        $apiKey = $headers['Auth'];
         // validating api key
         if (!$db->isValidApiKey($apiKey)) {
             // api key is not present in users table
@@ -94,7 +84,8 @@ function authenticate(\Slim\Route $route) {
         }
     } else {
         // api key is missing in header
-        $response["status"] = OPERATION_FAILED;
+        $response["headers"] = $headers;
+        $response["status"] = INVALID_CREDENTIALS;
         echoResponse(400, $response);
         $app->stop();
     }
@@ -136,18 +127,18 @@ $app->post('/register', function() use ($app) {
 /**
  * Refresh API Key
  * url - /refresh_apikey
- * method - PUT
+ * method - POST
  * params - username, uniqueID
  */
-$app->put('/refresh_apikey', function() use ($app) {
+$app->post('/refresh_apikey', function() use ($app) {
     // check for required params
     verifyRequiredParams(array('username', 'uid'));
 
     $response = array();
 
     // reading post params
-    $username = strtolower($app->request->put('username'));
-    $uniqueID = $app->request->put('uid');
+    $username = strtolower($app->request->post('username'));
+    $uniqueID = $app->request->post('uid');
 
     $db = new DbHandler();
     $res = $db->updateApiKey($username, $uniqueID);
@@ -203,7 +194,7 @@ $app->put('/username', 'authenticate', function() use ($app) {
     }
 
     // echo json response
-    echoResponse(200, $response);
+    echoResponse(201, $response);
 });
 
 /**
@@ -260,7 +251,7 @@ $app->post('/nearby', 'authenticate', function() use ($app) {
 
     global $user_id;
     $response = array();
-    $response["nearby users"] = [];
+    $response["nearby users"] = array();
 
     // reading post params
     $latitude = $app->request->get('latitude');
@@ -504,7 +495,6 @@ $app->get('/boop', 'authenticate', function() {
     // echo json response
     echoResponse(200, $response);
 });
-$app->run();
 
 /**
  * List the inventory of a particular user.
@@ -629,4 +619,6 @@ $app->get('/top_receivers', 'authenticate', function() {
     // echo json response
     echoResponse(200, $response);
 });
+
+$app->run();
 ?>
