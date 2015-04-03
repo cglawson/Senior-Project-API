@@ -8,6 +8,7 @@
 require_once '../include/dbhandler.php';
 require_once '../include/config.php';
 require '.././libs/Slim/Slim.php';
+error_reporting(E_ALL & ~E_STRICT & ~E_NOTICE); //PHP Strict hates globals, eventually find solution.
 
 \Slim\Slim::registerAutoloader();
 
