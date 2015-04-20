@@ -275,9 +275,11 @@ class DbHandler {
 
         $stmt = $this->conn->prepare("CALL FindNearest(?,?,5,1000,50,?)"); //Stored Procedure obtained from mysql.rjweb.org/doc.php/latlng, Rick James.
         $stmt->bind_param("dds", $latitude, $longitude, $condition);
-        $stmt->execute();
-
-        $res["status"] = OPERATION_SUCCESS;
+        if($stmt->execute()) {
+            $res["status"] = OPERATION_SUCCESS;
+        } else {
+            $res["status"] = OPERATION_FAILED;
+        }
         $res["nearby users"] = $stmt->get_result();
         $stmt->close();
 

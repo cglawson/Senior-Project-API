@@ -99,7 +99,7 @@ function authenticate(\Slim\Route $route) {
  * User Registration
  * url - /register
  * method - POST
- * params - username, uniqueID
+ * params - username, uid
  */
 $app->post('/register', function() use ($app) {
     // check for required params
@@ -164,6 +164,7 @@ $app->post('/refresh_apikey', function() use ($app) {
  * Update username.
  * method PUT
  * url /username
+ * params - newUsername, uid
  */
 $app->put('/username', 'authenticate', function() use ($app) {
     // check for required params
@@ -202,6 +203,7 @@ $app->put('/username', 'authenticate', function() use ($app) {
  * Update location.
  * method PUT
  * url /location
+ * params - latitude, longitude
  */
 $app->put('/location', 'authenticate', function() use ($app) {
     // check for required params
@@ -243,8 +245,9 @@ $app->delete('/location', 'authenticate', function() use ($app) {
 
 /**
  * List all nearby users.
- * method GET
+ * method POST
  * url /nearby
+ * params - latitude, longitude
  */
 $app->post('/nearby', 'authenticate', function() use ($app) {
     // check for required params
@@ -255,13 +258,15 @@ $app->post('/nearby', 'authenticate', function() use ($app) {
     $response["nearby users"] = array();
 
     // reading post params
-    $latitude = $app->request->get('latitude');
-    $longitude = $app->request->get('longitude');
+    $latitude = $app->request->post('latitude');
+    $longitude = $app->request->post('longitude');
 
     $db = new DbHandler();
     $res = $db->nearbyUsers($latitude, $longitude, $user_id);
 
-    $response["status"] = OPERATION_SUCCESS;
+    $response["status"] = $res["status"];
+    $response["lat"] = $latitude;
+    $response["lon"] = $longitude;
 
     while ($user = $res["nearby users"]->fetch_assoc()) {
         $tmp = array();
@@ -280,6 +285,7 @@ $app->post('/nearby', 'authenticate', function() use ($app) {
  * Request a user's friendship.
  * method POST
  * url /friend
+ * params - target
  */
 $app->post('/friend', 'authenticate', function() use ($app) {
     // check for required params
@@ -310,6 +316,7 @@ $app->post('/friend', 'authenticate', function() use ($app) {
  * Request a user's friendship by username.
  * method POST
  * url /friend_username
+ * params - target
  */
 $app->post('/friend_username', 'authenticate', function() use ($app) {
     // check for required params
@@ -447,6 +454,7 @@ $app->get('/incoming_requests', 'authenticate', function() {
  * Boop a user.
  * method POST
  * url /boop
+ * params - target
  */
 $app->post('/boop', 'authenticate', function() use ($app) {
     // check for required params
@@ -532,6 +540,7 @@ $app->get('/inventory', 'authenticate', function() {
  * Set an inventory item active.
  * method PUT
  * url /inventory
+ * params - elixir, active
  */
 $app->put('/inventory', 'authenticate', function() use ($app) {
     // check for required params
