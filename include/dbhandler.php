@@ -221,6 +221,33 @@ class DbHandler {
         return $res;
     }
 
+    /**
+     * Get the score of a user by their user ID.
+     * @param type $userID
+     * @return array
+     */
+    public function getScore($userID) {
+        $res = array();
+        $stmt = $this->conn->prepare("SELECT user_sentscore, user_receivedscore "
+                . "FROM SeniorProject.sp_users "
+                . "WHERE user_id = ?");
+        $stmt->bind_param("s", $userID);
+        if ($stmt->execute()) {
+            $tmp = $stmt->get_result()->fetch_assoc();
+            $res["status"] = OPERATION_SUCCESS;
+            $res["user sent score"] = $tmp["user_sentscore"];
+            $res["user received score"] = $tmp["user_receivedscore"];
+        } else {
+            $res["status"] = OPERATION_FAILED;
+            $res["user sent score"] = 0;
+            $res["user received score"] = 0;
+        }
+        $stmt->close();            
+        return $res;
+    }
+    
+    
+
     /* --- sp_user_locations TABLE METHODS --- */
 
     /**
@@ -275,7 +302,7 @@ class DbHandler {
 
         $stmt = $this->conn->prepare("CALL FindNearest(?,?,5,1000,50,?)"); //Stored Procedure obtained from mysql.rjweb.org/doc.php/latlng, Rick James.
         $stmt->bind_param("dds", $latitude, $longitude, $condition);
-        if($stmt->execute()) {
+        if ($stmt->execute()) {
             $res["status"] = OPERATION_SUCCESS;
         } else {
             $res["status"] = OPERATION_FAILED;

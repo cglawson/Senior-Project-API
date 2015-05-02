@@ -200,6 +200,23 @@ $app->put('/username', 'authenticate', function() use ($app) {
 });
 
 /**
+ * Get the score of the specified user.
+ * method GET
+ * url /score
+ */
+$app->get('/score', 'authenticate', function() {
+    $response = array();
+
+    global $user_id;
+    $db = new DbHandler();
+    $res = $db->getScore($user_id);
+
+    $response = $res;
+    // echo json response
+    echoResponse(200, $response);
+});
+
+/**
  * Update location.
  * method PUT
  * url /location
