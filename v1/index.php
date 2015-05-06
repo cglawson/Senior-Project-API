@@ -45,7 +45,7 @@ function verifyRequiredParams($required_fields) {
  * @param String $status_code Http response code.
  * @param Int $response Json response.
  */
-function echoResponse($status_code, $response) {
+function echoResponse($status_code, $response) { //Function written by Ravi Tamada - http://www.androidhive.info/2014/01/how-to-create-rest-api-for-android-app-using-php-slim-and-mysql-day-12-2/
     $app = \Slim\Slim::getInstance();
     // Http response code
     $app->status($status_code);
@@ -60,7 +60,7 @@ function echoResponse($status_code, $response) {
  * Adding Middle Layer to authenticate every request.
  * Checking if the request has valid API key in the 'Authorization' header.
  */
-function authenticate(\Slim\Route $route) {
+function authenticate(\Slim\Route $route) {  //Function written by Ravi Tamada - http://www.androidhive.info/2014/01/how-to-create-rest-api-for-android-app-using-php-slim-and-mysql-day-12-2/
     // Getting request headers
     $headers = apache_request_headers();
     $response = array();

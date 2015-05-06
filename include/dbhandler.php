@@ -57,7 +57,7 @@ class DbHandler {
      * @param String $username Name to check for in database.
      * @return boolean
      */
-    function userExists($username) {
+    function userExists($username) { //Function written by Ravi Tamada - http://www.androidhive.info/2014/01/how-to-create-rest-api-for-android-app-using-php-slim-and-mysql-day-12-2/
         $stmt = $this->conn->prepare("SELECT user_id "
                 . "FROM SeniorProject.sp_users "
                 . "WHERE user_name = ?");
@@ -73,7 +73,7 @@ class DbHandler {
      * Fetching user ID by API key.
      * @param String $api_key User API key.
      */
-    public function getUserId($api_key) {
+    public function getUserId($api_key) { //Function written by Ravi Tamada - http://www.androidhive.info/2014/01/how-to-create-rest-api-for-android-app-using-php-slim-and-mysql-day-12-2/
         $stmt = $this->conn->prepare("SELECT user_id "
                 . "FROM SeniorProject.sp_users "
                 . "WHERE user_apikey = ?");
@@ -111,7 +111,7 @@ class DbHandler {
      * @param String $api_key user api key
      * @return boolean
      */
-    public function isValidApiKey($api_key) {
+    public function isValidApiKey($api_key) { //Function written by Ravi Tamada - http://www.androidhive.info/2014/01/how-to-create-rest-api-for-android-app-using-php-slim-and-mysql-day-12-2/
         $stmt = $this->conn->prepare("SELECT user_id "
                 . "FROM SeniorProject.sp_users "
                 . "WHERE user_apikey = ?");
@@ -614,9 +614,7 @@ class DbHandler {
                     $used = TRUE;
                     break;
 
-                default: //Catches cheaters.  Unknown items reset the Boop value.
-                    $res["initiatorBoopValue"] = 1;
-                    $res["targetBoopValue"] = 1;
+                default: //Skips unknowns.                    
                     break;
             }
 
@@ -643,102 +641,104 @@ class DbHandler {
                 //Shields
                 case 1011: //Wood Mitigation Shield.
                     $tmp = mitigationShield(1, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) { //A shield is only marked used if it is useful.
+                    if ($tmp["tarBVal"] > 0) { //A shield is only marked used if it is useful.
                         $used = TRUE;
                     }
                     break;
                 case 1012: //Bronze Mitigation Shield.
                     $tmp = mitigationShield(2, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1013: //Iron Mitigation Shield.
                     $tmp = mitigationShield(3, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
 
                         $used = TRUE;
                     }
                     break;
                 case 1014: //Rearden Steel Mitigation Shield.
                     $tmp = mitigationShield(4, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1015: //Diamond Mitigation Shield.
                     $tmp = mitigationShield(5, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1021: //Wood Negation Shield.
                     $tmp = negationShield(1, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1022: //Bronze Negation Shield.
                     $tmp = negationShield(2, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1023: //Iron Negation Shield.
                     $tmp = negationShield(3, $res["targetBoopValue"]);
-                    $used = TRUE;
+                    if ($tmp["tarBVal"] > 0) {
+                        $used = TRUE;
+                    }
                     break;
                 case 1024: //Rearden Steel Negation Shield.
                     $tmp = negationShield(4, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1025: //Diamond Negation Shield.
                     $tmp = negationShield(5, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1031: //Wood Reflection Shield.
                     $tmp = reflectionShield(1, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1032: //Bronze Reflection Shield.
                     $tmp = reflectionShield(2, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1033: //Iron Reflection Shield.
                     $tmp = reflectionShield(3, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1034: //Rearden Steel Reflection Shield.
                     $tmp = reflectionShield(4, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1035: //Diamond Reflection Shield.
                     $tmp = reflectionShield(5, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1041: //Rearden Steel Inversion Shield.
                     $tmp = inversionShield(4, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
                 case 1042: //Diamond Inversion Shield.
                     $tmp = inversionShield(5, $res["targetBoopValue"]);
-                    if ($tmp["iniBVal"] > 0 and $tmp["tarBVal"] > 0) {
+                    if ($tmp["tarBVal"] > 0) {
                         $used = TRUE;
                     }
                     break;
@@ -763,9 +763,7 @@ class DbHandler {
                     $used = TRUE;
                     break;
 
-                default:
-                    $res["initiatorBoopValue"] = 1;
-                    $res["targetBoopValue"] = 1;
+                default: //Skips unknowns.
                     break;
             }
             if ($used) {
