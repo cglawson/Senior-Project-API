@@ -129,7 +129,7 @@ $app->post('/register', function() use ($app) {
  * Refresh API Key
  * url - /refresh_apikey
  * method - POST
- * params - username, uniqueID
+ * params - username, uid
  */
 $app->post('/refresh_apikey', function() use ($app) {
     // check for required params
@@ -164,16 +164,16 @@ $app->post('/refresh_apikey', function() use ($app) {
  * Update username.
  * method PUT
  * url /username
- * params - newUsername, uid
+ * params - username, uid
  */
 $app->put('/username', 'authenticate', function() use ($app) {
     // check for required params
-    verifyRequiredParams(array('newUsername', 'uid'));
+    verifyRequiredParams(array('username', 'uid'));
 
     $response = array();
 
     // reading post params
-    $newUsername = strtolower($app->request->put('newUsername'));
+    $newUsername = strtolower($app->request->put('username'));
     $uniqueID = $app->request->put('uid');
 
     global $user_id;
